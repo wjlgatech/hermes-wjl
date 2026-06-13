@@ -64,6 +64,12 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const setStatus = (t) => { $("#status").textContent = t; };
+// Base path of wherever this page is served — so the cockpit works both
+// standalone (served at "/") and mounted in the dashboard (served at
+// "/cockpit-ide/"). All API/WS URLs are built relative to BASE.
+const BASE = location.pathname.endsWith("/") ? location.pathname
+  : location.pathname.replace(/[^/]*$/, "");
+const api = (p) => `${BASE}cockpit/${p}`;
 let editor = null, openPath = null, openDirty = false;
 
 // ── Monaco editor ──────────────────────────────────────────────────────────
@@ -85,7 +91,7 @@ const langFor = (path) => {
 };
 
 async function openFile(path, { fromAgent = false } = {}) {
-  const r = await fetch("/cockpit/api/fs/file?path=" + encodeURIComponent(path));
+  const r = await fetch(api("api/fs/file?path=" + encodeURIComponent(path)));
   if (!r.ok) { setStatus("open failed: " + path); return; }
   const { content } = await r.json();
   openPath = path; openDirty = false;
@@ -105,7 +111,7 @@ async function openFile(path, { fromAgent = false } = {}) {
 async function saveFile() {
   if (!openPath) return;
   const content = editor.getValue();
-  const r = await fetch("/cockpit/api/fs/file", {
+  const r = await fetch(api("api/fs/file"), {
     method: "PUT", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path: openPath, content }),
   });
@@ -116,7 +122,7 @@ $("#save").onclick = saveFile;
 
 // ── file tree ───────────────────────────────────────────────────────────────
 async function loadDir(path, container) {
-  const r = await fetch("/cockpit/api/fs/tree?path=" + encodeURIComponent(path));
+  const r = await fetch(api("api/fs/tree?path=" + encodeURIComponent(path)));
   const { entries } = await r.json();
   container.innerHTML = "";
   for (const e of entries) {
@@ -145,7 +151,7 @@ $("#reload").onclick = reloadTree;
 reloadTree();
 
 // ── Stage 2: live agent-edit stream ─────────────────────────────────────────
-const es = new EventSource("/cockpit/api/events");
+const es = new EventSource(api("api/events"));
 es.onmessage = (ev) => {
   const e = JSON.parse(ev.data);
   // flash the node in the tree
@@ -168,7 +174,7 @@ term.open($("#term"));
 fit.fit();
 
 const wsProto = location.protocol === "https:" ? "wss" : "ws";
-const ws = new WebSocket(`${wsProto}://${location.host}/cockpit/ws/pty`);
+const ws = new WebSocket(`${wsProto}://${location.host}${BASE}cockpit/ws/pty?name=main`);
 ws.onopen = () => {
   const { cols, rows } = term;
   ws.send(JSON.stringify({ type: "resize", cols, rows }));

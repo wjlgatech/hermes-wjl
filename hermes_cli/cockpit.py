@@ -256,6 +256,9 @@ class FileWatcher:
         self._running = False
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
+        if self._running:  # idempotent — lazy-start may call this more than once
+            self._loop = loop
+            return
         self._loop = loop
         self._mtimes = self._scan()  # prime so we only report *changes*
         self._running = True
@@ -285,6 +288,9 @@ class FileWatcher:
             self._loop.call_soon_threadsafe(q.put_nowait, event)
 
     def _scan(self) -> Dict[str, float]:
+        # Cap the walk so a huge workspace root (e.g. a home dir) can't turn the
+        # 400ms poll into a CPU sink. Beyond the cap we stop scanning — the tree
+        # still browses fine (that's on-demand), only live-reload is bounded.
         out: Dict[str, float] = {}
         for dirpath, dirnames, filenames in os.walk(self._root):
             dirnames[:] = [d for d in dirnames if d not in _TREE_IGNORE]
@@ -294,6 +300,8 @@ class FileWatcher:
                     out[str(p)] = p.stat().st_mtime
                 except OSError:
                     pass
+            if len(out) > 20000:
+                break
         return out
 
     def _watch_loop(self) -> None:
@@ -333,12 +341,22 @@ def build_cockpit_app(root: Optional[Path] = None):
     app = FastAPI(title="Hermes Cockpit", docs_url=None, redoc_url=None)
     watcher = FileWatcher(root)
     hub = PtyHub(root)
+    _runtime = {"started": False}
+
+    def _ensure_runtime() -> None:
+        # Bind the running loop + start the watcher lazily, on first request.
+        # When this app is MOUNTED in the dashboard (app.mount), Starlette does
+        # not reliably fire its startup event, so we can't rely on it alone.
+        if _runtime["started"]:
+            return
+        loop = asyncio.get_running_loop()
+        watcher.start(loop)
+        hub.bind_loop(loop)
+        _runtime["started"] = True
 
     @app.on_event("startup")
     async def _startup() -> None:
-        loop = asyncio.get_event_loop()
-        watcher.start(loop)
-        hub.bind_loop(loop)
+        _ensure_runtime()
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
@@ -349,6 +367,7 @@ def build_cockpit_app(root: Optional[Path] = None):
     @app.websocket("/cockpit/ws/pty")
     async def pty_ws(ws: WebSocket) -> None:
         await ws.accept()
+        _ensure_runtime()
         name = ws.query_params.get("name", "main")
         sp = hub.get_or_create(name)
         out_q = sp.subscribe()
@@ -447,6 +466,7 @@ def build_cockpit_app(root: Optional[Path] = None):
     # ── Stage 2: file-change SSE ────────────────────────────────────────────
     @app.get("/cockpit/api/events")
     async def events():
+        _ensure_runtime()
         q = watcher.subscribe()
 
         async def gen():
