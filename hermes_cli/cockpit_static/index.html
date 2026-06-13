@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hermes Cockpit</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#c9d1d9; --accent:#58a6ff; --flash:#1f6feb44; }
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",monospace; }
+  #app { display:grid; grid-template-columns:240px 1fr; grid-template-rows:36px 1fr 38%;
+    grid-template-areas:"head head" "tree editor" "tree term"; height:100vh; }
+  #head { grid-area:head; display:flex; align-items:center; gap:12px; padding:0 12px;
+    background:var(--panel); border-bottom:1px solid var(--border); font-size:13px; }
+  #head .brand { font-weight:600; color:var(--accent); }
+  #head .spacer { flex:1; }
+  #head button { background:#21262d; color:var(--fg); border:1px solid var(--border);
+    border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+  #head button:hover { border-color:var(--accent); }
+  #status { font-size:11px; opacity:.7; }
+  #tree { grid-area:tree; background:var(--panel); border-right:1px solid var(--border);
+    overflow:auto; padding:6px; font-size:13px; }
+  .node { padding:2px 6px; cursor:pointer; white-space:nowrap; border-radius:4px; }
+  .node:hover { background:#21262d; }
+  .node.active { background:#1f6feb33; }
+  .node.dir::before { content:"▸ "; opacity:.7; }
+  .node.dir.open::before { content:"▾ "; opacity:.7; }
+  .node.file::before { content:"  "; }
+  .node.flash { animation:flash 1.2s ease-out; }
+  @keyframes flash { from { background:var(--flash); } to { background:transparent; } }
+  .children { margin-left:12px; }
+  #editorWrap { grid-area:editor; position:relative; border-bottom:1px solid var(--border); }
+  #editor { position:absolute; inset:0; }
+  #editorBadge { position:absolute; top:8px; right:16px; z-index:5; background:#1f6feb;
+    color:#fff; font-size:11px; padding:3px 8px; border-radius:10px; opacity:0; transition:opacity .2s; }
+  #editorBadge.show { opacity:1; }
+  #term { grid-area:term; background:#000; overflow:hidden; }
+  #openpath { font-size:12px; opacity:.8; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="head">
+    <span class="brand">🛩️ Hermes Cockpit</span>
+    <span id="openpath">— no file —</span>
+    <span class="spacer"></span>
+    <span id="status">connecting…</span>
+    <button id="reload">⟳ tree</button>
+    <button id="save">💾 save</button>
+  </div>
+  <div id="tree"></div>
+  <div id="editorWrap">
+    <div id="editorBadge">agent edited — reloaded</div>
+    <div id="editor"></div>
+  </div>
+  <div id="term"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const setStatus = (t) => { $("#status").textContent = t; };
+let editor = null, openPath = null, openDirty = false;
+
+// ── Monaco editor ──────────────────────────────────────────────────────────
+require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs" } });
+require(["vs/editor/editor.main"], () => {
+  editor = monaco.editor.create($("#editor"), {
+    value: "// Open a file from the tree, or watch Hermes edit one live.\n",
+    language: "plaintext", theme: "vs-dark", automaticLayout: true, fontSize: 13,
+    minimap: { enabled: false },
+  });
+  editor.onDidChangeModelContent(() => { if (openPath) openDirty = true; });
+});
+
+const langFor = (path) => {
+  const ext = path.split(".").pop().toLowerCase();
+  return ({ js:"javascript", ts:"typescript", tsx:"typescript", jsx:"javascript",
+    py:"python", json:"json", md:"markdown", html:"html", css:"css", yml:"yaml",
+    yaml:"yaml", sh:"shell", toml:"ini", rs:"rust", go:"go" })[ext] || "plaintext";
+};
+
+async function openFile(path, { fromAgent = false } = {}) {
+  const r = await fetch("/cockpit/api/fs/file?path=" + encodeURIComponent(path));
+  if (!r.ok) { setStatus("open failed: " + path); return; }
+  const { content } = await r.json();
+  openPath = path; openDirty = false;
+  $("#openpath").textContent = path;
+  if (editor) {
+    monaco.editor.setModelLanguage(editor.getModel(), langFor(path));
+    editor.setValue(content);
+  }
+  document.querySelectorAll(".node.file").forEach(n =>
+    n.classList.toggle("active", n.dataset.path === path));
+  if (fromAgent) {
+    const b = $("#editorBadge"); b.classList.add("show");
+    setTimeout(() => b.classList.remove("show"), 1500);
+  }
+}
+
+async function saveFile() {
+  if (!openPath) return;
+  const content = editor.getValue();
+  const r = await fetch("/cockpit/api/fs/file", {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: openPath, content }),
+  });
+  setStatus(r.ok ? "saved " + openPath : "save failed");
+  openDirty = false;
+}
+$("#save").onclick = saveFile;
+
+// ── file tree ───────────────────────────────────────────────────────────────
+async function loadDir(path, container) {
+  const r = await fetch("/cockpit/api/fs/tree?path=" + encodeURIComponent(path));
+  const { entries } = await r.json();
+  container.innerHTML = "";
+  for (const e of entries) {
+    const node = document.createElement("div");
+    node.className = "node " + (e.dir ? "dir" : "file");
+    node.textContent = e.name;
+    node.dataset.path = e.path;
+    if (e.dir) {
+      const kids = document.createElement("div");
+      kids.className = "children"; kids.style.display = "none";
+      node.onclick = async (ev) => {
+        ev.stopPropagation();
+        const open = node.classList.toggle("open");
+        kids.style.display = open ? "block" : "none";
+        if (open && !kids.dataset.loaded) { await loadDir(e.path, kids); kids.dataset.loaded = "1"; }
+      };
+      container.appendChild(node); container.appendChild(kids);
+    } else {
+      node.onclick = (ev) => { ev.stopPropagation(); openFile(e.path); };
+      container.appendChild(node);
+    }
+  }
+}
+const reloadTree = () => { const t = $("#tree"); t.innerHTML = ""; loadDir("", t); };
+$("#reload").onclick = reloadTree;
+reloadTree();
+
+// ── Stage 2: live agent-edit stream ─────────────────────────────────────────
+const es = new EventSource("/cockpit/api/events");
+es.onmessage = (ev) => {
+  const e = JSON.parse(ev.data);
+  // flash the node in the tree
+  document.querySelectorAll(".node").forEach(n => {
+    if (n.dataset.path === e.path) { n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash"); }
+  });
+  // if the agent edited the file we're viewing (and we have no unsaved edits), reload it live
+  if (e.path === openPath && e.kind === "modified" && !openDirty) {
+    openFile(e.path, { fromAgent: true });
+  }
+};
+es.onopen = () => setStatus("● live");
+es.onerror = () => setStatus("○ reconnecting…");
+
+// ── Stage 0: PTY terminal ────────────────────────────────────────────────────
+const term = new Terminal({ fontSize: 13, theme: { background: "#000000" }, cursorBlink: true });
+const fit = new FitAddon.FitAddon();
+term.loadAddon(fit);
+term.open($("#term"));
+fit.fit();
+
+const wsProto = location.protocol === "https:" ? "wss" : "ws";
+const ws = new WebSocket(`${wsProto}://${location.host}/cockpit/ws/pty`);
+ws.onopen = () => {
+  const { cols, rows } = term;
+  ws.send(JSON.stringify({ type: "resize", cols, rows }));
+  term.focus();
+};
+ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type === "output") term.write(m.data); };
+ws.onclose = () => term.write("\r\n[cockpit] terminal disconnected\r\n");
+term.onData((d) => ws.readyState === 1 && ws.send(JSON.stringify({ type: "input", data: d })));
+const sendResize = () => { fit.fit(); if (ws.readyState === 1) ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows })); };
+window.addEventListener("resize", sendResize);
+setTimeout(sendResize, 300);
+
+// Cmd/Ctrl-S saves
+window.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveFile(); }
+});
+</script>
+</body>
+</html>
