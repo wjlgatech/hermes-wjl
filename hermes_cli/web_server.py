@@ -11659,6 +11659,20 @@ _mount_plugin_api_routes()
 from hermes_cli.dashboard_auth.routes import router as _dashboard_auth_router  # noqa: E402
 app.include_router(_dashboard_auth_router)
 
+# Mount the Cockpit (agent-native IDE) sub-app BEFORE the SPA catch-all so
+# /cockpit-ide/* reaches it instead of being swallowed by /{full_path:path}.
+# Workspace root: HERMES_COCKPIT_ROOT env, else the user's home. Wrapped so a
+# missing optional dep (ptyprocess) can never take down the dashboard.
+try:
+    import os as _os
+    from pathlib import Path as _Path
+    from hermes_cli.cockpit import build_cockpit_app as _build_cockpit_app
+    _cockpit_root = _Path(_os.environ.get("HERMES_COCKPIT_ROOT") or _Path.home())
+    app.mount("/cockpit-ide", _build_cockpit_app(_cockpit_root), name="cockpit-ide")
+except Exception as _cockpit_err:  # pragma: no cover
+    import logging as _logging
+    _logging.getLogger(__name__).warning("Cockpit not mounted: %s", _cockpit_err)
+
 mount_spa(app)
 
 
