@@ -132,6 +132,109 @@ class PtySession:
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# Stage 3 — shared PTY: named terminals that multiple clients (and the agent)
+# attach to, with output fanned out to all. The agent injects commands via the
+# HTTP /run endpoint, so its commands + output appear in the same xterm the
+# human is watching — and the human can grab the keyboard at any time.
+# ════════════════════════════════════════════════════════════════════════════
+class SharedPty:
+    """One named PTY with output fanned out to N attached subscribers."""
+
+    def __init__(self, root: Path, name: str) -> None:
+        self.name = name
+        self._subs: Set["asyncio.Queue"] = set()
+        self._lock = threading.Lock()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._backlog: List[str] = []  # recent output for late-joiners
+        self._session = PtySession(root, on_output=self._broadcast)
+
+    def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+
+    def _broadcast(self, text: str) -> None:
+        with self._lock:
+            self._backlog.append(text)
+            if len(self._backlog) > 400:
+                self._backlog = self._backlog[-400:]
+            subs = list(self._subs)
+            loop = self._loop
+        if loop is None:
+            return
+        for q in subs:
+            loop.call_soon_threadsafe(q.put_nowait, text)
+
+    def subscribe(self) -> "asyncio.Queue":
+        q: asyncio.Queue = asyncio.Queue()
+        with self._lock:
+            self._subs.add(q)
+            backlog = "".join(self._backlog)
+        if backlog:
+            q.put_nowait(backlog)  # replay so a new tab sees the scrollback
+        return q
+
+    def unsubscribe(self, q: "asyncio.Queue") -> None:
+        with self._lock:
+            self._subs.discard(q)
+
+    def write(self, data: str) -> None:
+        self._session.write(data)
+
+    def resize(self, cols: int, rows: int) -> None:
+        self._session.resize(cols, rows)
+
+    def run(self, command: str) -> None:
+        """Inject a command line (the agent's hands on the shared terminal)."""
+        line = command if command.endswith("\n") else command + "\n"
+        self._session.write(line)
+
+    @property
+    def sub_count(self) -> int:
+        with self._lock:
+            return len(self._subs)
+
+    def close(self) -> None:
+        self._session.close()
+
+
+class PtyHub:
+    """Registry of named SharedPty terminals (default name: ``main``)."""
+
+    def __init__(self, root: Path) -> None:
+        self._root = root
+        self._ptys: Dict[str, SharedPty] = {}
+        self._lock = threading.Lock()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+    def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+
+    def get_or_create(self, name: str) -> SharedPty:
+        with self._lock:
+            sp = self._ptys.get(name)
+            if sp is None:
+                sp = SharedPty(self._root, name)
+                if self._loop is not None:
+                    sp.bind_loop(self._loop)
+                self._ptys[name] = sp
+            return sp
+
+    def get(self, name: str) -> Optional[SharedPty]:
+        with self._lock:
+            return self._ptys.get(name)
+
+    def names(self) -> List[str]:
+        with self._lock:
+            return list(self._ptys)
+
+    def close_all(self) -> None:
+        with self._lock:
+            ptys = list(self._ptys.values())
+            self._ptys.clear()
+        for sp in ptys:
+            sp.close()
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # Stage 2 — file-change event bus (so the editor lights up as the agent edits)
 # ════════════════════════════════════════════════════════════════════════════
 class FileWatcher:
@@ -229,26 +332,26 @@ def build_cockpit_app(root: Optional[Path] = None):
     root = (root or _DEFAULT_ROOT).resolve()
     app = FastAPI(title="Hermes Cockpit", docs_url=None, redoc_url=None)
     watcher = FileWatcher(root)
+    hub = PtyHub(root)
 
     @app.on_event("startup")
     async def _startup() -> None:
-        watcher.start(asyncio.get_event_loop())
+        loop = asyncio.get_event_loop()
+        watcher.start(loop)
+        hub.bind_loop(loop)
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
         watcher.stop()
+        hub.close_all()
 
-    # ── Stage 0: PTY websocket ──────────────────────────────────────────────
+    # ── Stage 0+3: PTY websocket (named, shared across clients + the agent) ──
     @app.websocket("/cockpit/ws/pty")
     async def pty_ws(ws: WebSocket) -> None:
         await ws.accept()
-        loop = asyncio.get_event_loop()
-        out_q: asyncio.Queue = asyncio.Queue()
-
-        def on_output(text: str) -> None:
-            loop.call_soon_threadsafe(out_q.put_nowait, text)
-
-        session = PtySession(root, on_output)
+        name = ws.query_params.get("name", "main")
+        sp = hub.get_or_create(name)
+        out_q = sp.subscribe()
 
         async def pump_output() -> None:
             try:
@@ -268,16 +371,30 @@ def build_cockpit_app(root: Optional[Path] = None):
                     continue
                 t = msg.get("type")
                 if t == "input":
-                    session.write(msg.get("data", ""))
+                    sp.write(msg.get("data", ""))
                 elif t == "resize":
-                    session.resize(int(msg.get("cols", 80)), int(msg.get("rows", 24)))
+                    sp.resize(int(msg.get("cols", 80)), int(msg.get("rows", 24)))
         except WebSocketDisconnect:
             pass
         except Exception:
             pass
         finally:
-            session.close()
+            sp.unsubscribe(out_q)  # leave the PTY alive for other clients + the agent
             pump.cancel()
+
+    # ── Stage 3: command-inject — the agent's hands on the shared terminal ──
+    @app.post("/cockpit/api/pty/{name}/run")
+    async def pty_run(name: str, payload: Dict[str, Any] = Body(...)):
+        command = (payload.get("command") or "").strip()
+        if not command:
+            return JSONResponse({"error": "empty command"}, status_code=400)
+        sp = hub.get_or_create(name)
+        sp.run(command)
+        return {"pty": name, "ran": command, "watchers": sp.sub_count}
+
+    @app.get("/cockpit/api/pty")
+    async def pty_list():
+        return {"ptys": [{"name": n, "watchers": hub.get(n).sub_count} for n in hub.names()]}
 
     # ── Stage 1: filesystem API ─────────────────────────────────────────────
     @app.get("/cockpit/api/fs/tree")
@@ -348,7 +465,7 @@ def build_cockpit_app(root: Optional[Path] = None):
 
     @app.get("/cockpit/api/health")
     async def health():
-        return {"status": "ok", "root": str(root), "surface": "cockpit", "stages": "0-2"}
+        return {"status": "ok", "root": str(root), "surface": "cockpit", "stages": "0-3"}
 
     # ── static UI ────────────────────────────────────────────────────────────
     @app.get("/", response_class=HTMLResponse)

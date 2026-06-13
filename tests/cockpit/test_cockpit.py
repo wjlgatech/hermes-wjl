@@ -80,6 +80,34 @@ def test_pty_session_echo(workspace):
         sess.close()
 
 
+def test_pty_run_endpoint_and_list(client):
+    """Stage 3: the agent injects a command via HTTP; pty registry reflects it."""
+    r = client.post("/cockpit/api/pty/main/run", json={"command": "echo hi"})
+    assert r.status_code == 200 and r.json()["pty"] == "main"
+    assert client.post("/cockpit/api/pty/main/run", json={"command": "  "}).status_code == 400
+    assert any(p["name"] == "main" for p in client.get("/cockpit/api/pty").json()["ptys"])
+
+
+def test_shared_pty_run_and_replay(workspace):
+    """Stage 3: run() injects into the shared PTY; a new subscriber replays the
+    scrollback synchronously (no running loop needed for the backlog path)."""
+    from hermes_cli.cockpit import SharedPty
+
+    sp = SharedPty(workspace, "main")
+    try:
+        sp.run("echo SHARED_OK")
+        deadline = time.time() + 5
+        while time.time() < deadline and "SHARED_OK" not in "".join(sp._backlog):
+            time.sleep(0.1)
+        assert "SHARED_OK" in "".join(sp._backlog)
+        # a late-joining client replays the shared scrollback immediately
+        q = sp.subscribe()
+        assert "SHARED_OK" in q.get_nowait()
+        assert sp.sub_count == 1
+    finally:
+        sp.close()
+
+
 def test_watcher_detects_modification(workspace):
     """FileWatcher should diff mtimes and emit a 'modified' event."""
     events = []
