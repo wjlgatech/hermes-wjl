@@ -41,7 +41,8 @@ jobs:
 
       - name: Fast-forward main to upstream/main
         run: |
-          git checkout main
+          git fetch origin main
+          git checkout -B main origin/main
           if git merge --ff-only upstream/main; then
             git push origin main
             echo "main fast-forwarded to upstream."
