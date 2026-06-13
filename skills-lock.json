@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "huashu-nuwa": {
+      "source": "alchaincyf/nuwa-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "4098e766eac715b03e258f657ee996c5132aeb3ce807497beb229729a4260d36"
+    },
+    "skill-distillery": {
+      "source": "kylezantos/skill-distillery",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "1a8c88e0dff948327588d0720836175786ae2667a1f9e3335391f2020f94714d"
+    }
+  }
+}

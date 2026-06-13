@@ -7034,6 +7034,15 @@ class HermesCLI:
             if result.get("success") and result.get("transcript", "").strip():
                 transcript = result["transcript"].strip()
                 self._attached_images.clear()
+                # Auto-enable TTS output for voice responses if configured
+                # This must happen BEFORE chat() so streaming TTS can be set up
+                try:
+                    from hermes_cli.config import load_config
+                    tts_config = load_config().get("tts", {})
+                    if tts_config.get("auto_voice_response", False):
+                        self._voice_tts = True
+                except Exception:
+                    pass
                 if hasattr(self, '_app') and self._app:
                     self._app.invalidate()
                 self._pending_input.put(transcript)
@@ -7135,6 +7144,47 @@ class HermesCLI:
             _cprint(f"{_DIM}TTS playback failed: {e}{_RST}")
         finally:
             self._voice_tts_done.set()
+
+    def _tts_speak_sentence(self, sentence: str):
+        """Speak a single sentence using TTS (non-blocking, for sentence-by-sentence streaming)."""
+        if not self._voice_tts:
+            return
+        try:
+            from tools.tts_tool import text_to_speech_tool
+            from tools.voice_mode import play_audio_file
+            import re
+
+            # Clean up the sentence
+            tts_text = re.sub(r'```[\s\S]*?```', ' ', sentence)   # fenced code blocks
+            tts_text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', tts_text)  # [text](url) -> text
+            tts_text = re.sub(r'https?://\S+', '', tts_text)      # URLs
+            tts_text = re.sub(r'\*\*(.+?)\*\*', r'\1', tts_text)  # bold
+            tts_text = re.sub(r'\*(.+?)\*', r'\1', tts_text)      # italic
+            tts_text = re.sub(r'`(.+?)`', r'\1', tts_text)        # inline code
+            tts_text = re.sub(r'^#+\s*', '', tts_text, flags=re.MULTILINE)  # headers
+            tts_text = tts_text.strip()
+            if not tts_text or len(tts_text) < 3:
+                return
+
+            os.makedirs(os.path.join(tempfile.gettempdir(), "hermes_voice"), exist_ok=True)
+            mp3_path = os.path.join(
+                tempfile.gettempdir(), "hermes_voice",
+                f"tts_sent_{time.strftime('%Y%m%d_%H%M%S_%f')}.mp3",
+            )
+
+            text_to_speech_tool(text=tts_text, output_path=mp3_path)
+
+            if os.path.isfile(mp3_path) and os.path.getsize(mp3_path) > 0:
+                play_audio_file(mp3_path)
+                try:
+                    os.unlink(mp3_path)
+                    ogg_path = mp3_path.rsplit(".", 1)[0] + ".ogg"
+                    if os.path.isfile(ogg_path):
+                        os.unlink(ogg_path)
+                except OSError:
+                    pass
+        except Exception as e:
+            logger.debug("Sentence TTS failed: %s", e)
 
     def _handle_voice_command(self, command: str):
         """Handle /voice [on|off|tts|status] command."""
@@ -7788,7 +7838,10 @@ class HermesCLI:
             # When ElevenLabs is the TTS provider and sounddevice is available,
             # we stream audio sentence-by-sentence as the agent generates tokens
             # instead of waiting for the full response.
+            # For other providers (Edge, OpenAI), we'll do batched TTS on complete
+            # sentences as they arrive via stream_callback.
             use_streaming_tts = False
+            use_sentence_batched_tts = False
             _streaming_box_opened = False
             text_queue = None
             tts_thread = None
@@ -7805,11 +7858,15 @@ class HermesCLI:
                         stream_tts_to_speaker,
                     )
                     _tts_cfg = _load_tts_cfg()
-                    if _get_prov(_tts_cfg) == "elevenlabs":
+                    _provider = _get_prov(_tts_cfg)
+                    if _provider == "elevenlabs":
                         # Verify both ElevenLabs SDK and audio output are available
                         _import_elevenlabs()
                         _import_sounddevice()
                         use_streaming_tts = True
+                    else:
+                        # For other providers (Edge, OpenAI), buffer text and stream sentences
+                        use_sentence_batched_tts = True
                 except (ImportError, OSError):
                     pass
                 except Exception:
@@ -7836,6 +7893,40 @@ class HermesCLI:
                     kwargs={"display_callback": display_callback},
                     daemon=True,
                 )
+                tts_thread.start()
+            elif use_sentence_batched_tts:
+                # For non-ElevenLabs providers, buffer complete sentences and TTS them
+                # as they arrive, instead of waiting for the entire response.
+                text_queue = queue.Queue()
+                stop_event = threading.Event()
+                
+                def sentence_tts_worker():
+                    """Background thread that processes sentences and generates TTS audio."""
+                    import re
+                    buffer = ""
+                    try:
+                        while True:
+                            chunk = text_queue.get()
+                            if chunk is None:  # Sentinel value
+                                # Final sentence TTS
+                                if buffer.strip():
+                                    self._tts_speak_sentence(buffer)
+                                break
+                            buffer += chunk
+                            # Look for sentence boundaries
+                            sentences = re.split(r'(?<=[.!?])\s+', buffer)
+                            # Keep the last incomplete sentence in buffer
+                            if len(sentences) > 1:
+                                for sent in sentences[:-1]:
+                                    if sent.strip():
+                                        self._tts_speak_sentence(sent)
+                                buffer = sentences[-1]
+                    except Exception as e:
+                        logger.warning("Sentence TTS worker failed: %s", e)
+                    finally:
+                        self._voice_tts_done.set()
+                
+                tts_thread = threading.Thread(target=sentence_tts_worker, daemon=True)
                 tts_thread.start()
 
                 def stream_callback(delta: str):

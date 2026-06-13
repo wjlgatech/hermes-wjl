@@ -4499,7 +4499,7 @@ def _coalesce_session_name_args(argv: list) -> list:
         "status", "cron", "doctor", "config", "pairing", "skills", "tools",
         "mcp", "sessions", "insights", "version", "update", "uninstall",
         "profile", "dashboard",
-        "honcho", "claw", "plugins", "acp",
+        "honcho", "claw", "plugins", "acp", "agui",
         "webhook", "memory", "dump", "debug", "backup", "import", "completion", "logs",
     }
     _SESSION_FLAGS = {"-c", "--continue", "-r", "--resume"}
@@ -6314,6 +6314,34 @@ Examples:
             sys.exit(1)
 
     acp_parser.set_defaults(func=cmd_acp)
+
+    # =========================================================================
+    # agui command
+    # =========================================================================
+    agui_parser = subparsers.add_parser(
+        "agui",
+        help="Run Hermes Agent as an AG-UI server (for CopilotKit and other AG-UI frontends)",
+        description="Start Hermes Agent as an AG-UI agent backend so CopilotKit (or any AG-UI client) can drive it over HTTP/SSE",
+    )
+    agui_parser.add_argument("--host", default=None, help="Bind host (default 127.0.0.1, env HERMES_AGUI_HOST)")
+    agui_parser.add_argument("--port", type=int, default=None, help="Bind port (default 9100, env HERMES_AGUI_PORT)")
+
+    def cmd_agui(args):
+        """Launch Hermes Agent as an AG-UI server."""
+        try:
+            from agui_adapter.entry import main as agui_main
+        except ImportError:
+            print("AG-UI dependencies not installed.")
+            print("Install them with:  pip install -e '.[agui]'")
+            sys.exit(1)
+        forwarded = []
+        if getattr(args, "host", None):
+            forwarded += ["--host", str(args.host)]
+        if getattr(args, "port", None):
+            forwarded += ["--port", str(args.port)]
+        agui_main(forwarded)
+
+    agui_parser.set_defaults(func=cmd_agui)
 
     # =========================================================================
     # profile command
