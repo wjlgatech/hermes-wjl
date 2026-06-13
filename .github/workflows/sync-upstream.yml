@@ -49,32 +49,18 @@ jobs:
             echo "::warning::main has diverged from upstream and cannot fast-forward; leaving it untouched."
           fi
 
-      - name: Merge upstream/main into wjl
-        id: mergewjl
+      # NOTE: the personal `wjl` branch is based on a much older Hermes and is
+      # thousands of commits behind upstream, so an automatic merge would
+      # conflict every run. We do NOT auto-merge it — instead we report the
+      # drift so you know when a manual port is worth doing. To pull upstream
+      # into wjl by hand:
+      #   git fetch upstream && git checkout wjl && git merge upstream/main
+      - name: Report how far wjl is behind upstream
         run: |
-          git checkout wjl
-          if git merge --no-edit upstream/main; then
-            git push origin wjl
-            echo "result=clean" >> "$GITHUB_OUTPUT"
-            echo "Merged upstream/main into wjl."
-          else
-            git merge --abort
-            echo "result=conflict" >> "$GITHUB_OUTPUT"
-            echo "::warning::Merge conflict — wjl left unchanged, opening an issue."
-          fi
-
-      - name: Open issue on conflict
-        if: steps.mergewjl.outputs.result == 'conflict'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          title="Upstream sync conflict: resolve upstream/main -> wjl"
-          # Avoid duplicate issues — reuse an open one if present.
-          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
-          body=$'The daily upstream sync could not merge `upstream/main` into `wjl` cleanly.\n\nResolve locally:\n```bash\ngit fetch upstream\ngit checkout wjl\ngit merge upstream/main   # resolve conflicts, commit\ngit push origin wjl\n```\n\n_(auto-filed by the Sync with upstream Hermes workflow)_'
-          if [ -z "$existing" ]; then
-            gh issue create --title "$title" --body "$body" --label "upstream-sync" 2>/dev/null \
-              || gh issue create --title "$title" --body "$body"
-          else
-            echo "Reusing open issue #$existing"
-          fi
+          git fetch origin wjl
+          behind=$(git rev-list --count origin/wjl..upstream/main)
+          ahead=$(git rev-list --count upstream/main..origin/wjl)
+          echo "wjl is $behind commit(s) behind and $ahead ahead of upstream/main."
+          echo "### Fork sync status" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`main\` mirrors upstream (auto fast-forwarded)." >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`wjl\` is **$behind behind** / **$ahead ahead** of upstream/main (manual port)." >> "$GITHUB_STEP_SUMMARY"
