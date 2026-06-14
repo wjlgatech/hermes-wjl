@@ -2,13 +2,20 @@ import { useStore } from '@nanostores/react'
 import { atom } from 'nanostores'
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
-import { TerminalTab } from './index'
+import { cn } from '@/lib/utils'
+
+import { $terminalTakeover } from '../store'
+
+import { $activeTabKeyBySession, $terminalTabs, DRAFT_SESSION, rekeyTabs, syncPrimaryCwd } from './tabs'
+
+import { TerminalBody, TerminalHeader } from './index'
 
 /**
- * One xterm Terminal mounted at the layout root and CSS-overlayed onto
- * whichever `<TerminalSlot />` is active. Moving the host DOM detaches xterm's
- * WebGL renderer (it observes its own attachment) and resets the screen, so
- * the host stays put and we chase the slot's bounding rect with position:fixed.
+ * One xterm Terminal per tab, all mounted at the layout root and CSS-overlayed
+ * onto whichever `<TerminalSlot />` is active. Moving the host DOM detaches
+ * xterm's WebGL renderer (it observes its own attachment) and resets the screen,
+ * so the hosts stay put and we chase the slot's bounding rect with position:fixed.
+ * Background tabs stay mounted (hidden) so their renderer + scrollback survive.
  */
 
 const $slot = atom<HTMLElement | null>(null)
@@ -40,7 +47,9 @@ export function TerminalSlot({ className = SLOT_CLASS }: { className?: string })
 interface PersistentTerminalProps {
   cwd: string
   onAddSelectionToChat: (text: string, label?: string) => void
-  onNewSession?: () => void
+  // Active Hermes session; null for an unsaved new-chat draft. Each session owns
+  // its own tab set, so the pane swaps tabs when this changes.
+  sessionId: null | string
 }
 
 interface Rect {
@@ -53,10 +62,33 @@ interface Rect {
 const sameRect = (a: Rect | null, b: Rect) =>
   !!a && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
 
-export function PersistentTerminal({ cwd, onAddSelectionToChat, onNewSession }: PersistentTerminalProps) {
+export function PersistentTerminal({ cwd, onAddSelectionToChat, sessionId }: PersistentTerminalProps) {
   const slot = useStore($slot)
+  const tabs = useStore($terminalTabs)
+  const activeBySession = useStore($activeTabKeyBySession)
+  const takeover = useStore($terminalTakeover)
   const [rect, setRect] = useState<Rect | null>(null)
   const [ready, setReady] = useState(false)
+
+  // Tabs live under the real session id, or a draft bucket until the chat is
+  // saved. activeKey is this session's focused tab.
+  const bucket = sessionId || DRAFT_SESSION
+  const activeKey = activeBySession[bucket]
+
+  // While the pane is open, ensure this session has a primary tab pointed at its
+  // project (extra tabs keep their own cwd), and fold any draft tabs into the
+  // session once it's saved. Gating on `takeover` means closing the last tab —
+  // which hides the pane — doesn't immediately respawn a shell; reopening
+  // recreates one.
+  useEffect(() => {
+    if (takeover) {
+      if (sessionId) {
+        rekeyTabs(DRAFT_SESSION, sessionId)
+      }
+
+      syncPrimaryCwd(bucket, cwd)
+    }
+  }, [bucket, cwd, sessionId, takeover])
 
   useLayoutEffect(() => {
     if (!slot) {
@@ -117,7 +149,35 @@ export function PersistentTerminal({ cwd, onAddSelectionToChat, onNewSession }: 
   // new line. After first measurement we keep it mounted forever.
   return (
     <div aria-hidden={!visible} style={style}>
-      {ready && <TerminalTab cwd={cwd} onAddSelectionToChat={onAddSelectionToChat} onNewSession={onNewSession} />}
+      {ready && (
+        <>
+          <TerminalHeader sessionId={bucket} />
+          <div className="relative min-h-0 flex-1">
+            {tabs.map(tab => {
+              // Visible only when it's the active session's active tab; every
+              // other tab (incl. background sessions') stays mounted but hidden.
+              const isCurrent = tab.sessionId === bucket && tab.key === activeKey
+
+              return (
+                <div
+                  className={cn(
+                    'absolute inset-0 flex flex-col',
+                    isCurrent ? 'z-10' : 'invisible z-0 pointer-events-none'
+                  )}
+                  key={tab.key}
+                >
+                  <TerminalBody
+                    active={isCurrent}
+                    cwd={tab.cwd}
+                    onAddSelectionToChat={onAddSelectionToChat}
+                    tabKey={tab.key}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }

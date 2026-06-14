@@ -19,9 +19,11 @@ export interface TerminalReadOptions {
 
 type Reader = (opts: TerminalReadOptions) => TerminalReadResult
 
-// The persistent terminal is a singleton (one xterm mounted forever), so a
-// module-level slot is enough — set while the session is live, cleared on
-// dispose. The gateway `terminal.read.request` handler reads through this.
+// With terminal tabs, several xterms are mounted at once, but only the visible
+// tab registers here (use-terminal-session gates registration on `active`), so a
+// single module-level slot still holds exactly the reader for the tab the user
+// sees. Re-pointed on tab switch, cleared when the active tab unmounts. The
+// gateway `terminal.read.request` handler reads through this.
 let activeReader: Reader | null = null
 
 export function setActiveTerminalReader(reader: Reader | null): void {

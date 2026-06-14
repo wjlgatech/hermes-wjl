@@ -132,6 +132,13 @@ function stripInitialPromptGap(data: string) {
 interface UseTerminalSessionOptions {
   cwd: string
   onAddSelectionToChat: (text: string, label?: string) => void
+  // Whether this terminal is the visible tab. Only the active tab registers as
+  // the reader the agent's read_terminal tool serializes, so background tabs
+  // don't fight over it.
+  active?: boolean
+  // Reports the backend-resolved shell name (e.g. "zsh") so the tab strip can
+  // label this tab once its session starts.
+  onShell?: (shell: string) => void
 }
 
 // Bind the palette to the live skin surface so the terminal blends with the app
@@ -230,7 +237,7 @@ function quotePathForShell(path: string, shellName: string): string {
   return `'${path.replace(/'/g, "'\\''")}'`
 }
 
-export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSessionOptions) {
+export function useTerminalSession({ active = true, cwd, onAddSelectionToChat, onShell }: UseTerminalSessionOptions) {
   // Key off renderedMode (the painted surface type), not resolvedMode (the
   // clicked switch) — a skin can keep a light surface in "dark" mode, and we
   // must match the surface or the ANSI palette inverts against it. themeName
@@ -251,6 +258,11 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
   const selectionLabelRef = useRef('')
   const selectionRef = useRef('')
   const onAddSelectionToChatRef = useRef(onAddSelectionToChat)
+  const onShellRef = useRef(onShell)
+  // makeTerminalReader bound to this terminal; registered as the active reader
+  // only while this tab is visible.
+  const readerRef = useRef<null | ReturnType<typeof makeTerminalReader>>(null)
+  const activeRef = useRef(active)
   const [status, setStatus] = useState<TerminalStatus>('starting')
   const [selection, setSelection] = useState('')
   const [selectionStyle, setSelectionStyle] = useState<CSSProperties | null>(null)
@@ -259,6 +271,21 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
   useEffect(() => {
     onAddSelectionToChatRef.current = onAddSelectionToChat
   }, [onAddSelectionToChat])
+
+  useEffect(() => {
+    onShellRef.current = onShell
+  }, [onShell])
+
+  // Only the visible tab is the reader the agent's read_terminal tool reads.
+  // Register on activation; the next active tab overwrites, and an active tab
+  // that unmounts clears it (below).
+  activeRef.current = active
+
+  useEffect(() => {
+    if (active && readerRef.current) {
+      setActiveTerminalReader(readerRef.current)
+    }
+  }, [active, status])
 
   // Live selection at call time. A redraw-heavy TUI (spinners, clocks) outruns
   // onSelectionChange, so trust xterm directly — fall back to the native
@@ -368,7 +395,13 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
 
     // Let the GUI chat agent read this pane via the `read_terminal` tool: the
     // gateway's terminal.read.request handler serializes the buffer through this.
-    setActiveTerminalReader(makeTerminalReader(term))
+    // Registered as the active reader only while this tab is visible (see the
+    // active effect above); stash it here so activation can pick it up.
+    readerRef.current = makeTerminalReader(term)
+
+    if (activeRef.current) {
+      setActiveTerminalReader(readerRef.current)
+    }
 
     const onDragOver = (e: DragEvent) => {
       if (!e.dataTransfer || !transferHasDropCandidates(e.dataTransfer)) {
@@ -567,6 +600,7 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
           lastSentSize = { cols: term.cols, rows: term.rows }
           shellNameRef.current = session.shell || 'shell'
           setShellName(session.shell || 'shell')
+          onShellRef.current?.(session.shell || 'shell')
 
           const initial = term.hasSelection() ? term.getSelection() : ''
           selectionRef.current = initial
@@ -636,7 +670,14 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
     return () => {
       disposed = true
       cleanup.forEach(run => run())
-      setActiveTerminalReader(null)
+
+      // Only drop the global reader if this (the active) terminal owned it — a
+      // background tab unmounting must not blank the visible tab's reader.
+      if (activeRef.current) {
+        setActiveTerminalReader(null)
+      }
+
+      readerRef.current = null
 
       const id = sessionIdRef.current
       sessionIdRef.current = null
