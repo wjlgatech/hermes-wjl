@@ -2,22 +2,24 @@ import '@xterm/xterm/css/xterm.css'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
+import { KbdCombo } from '@/components/ui/kbd'
 import { Loader } from '@/components/ui/loader'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
+import { cn } from '@/lib/utils'
 
 import { SidebarPanelLabel } from '../../shell/sidebar-label'
 import { setTerminalTakeover } from '../store'
 
-import { KbdCombo } from '@/components/ui/kbd'
 import { useTerminalSession } from './use-terminal-session'
 
 interface TerminalTabProps {
   cwd: string
   onAddSelectionToChat: (text: string, label?: string) => void
+  onNewSession?: () => void
 }
 
-export function TerminalTab({ cwd, onAddSelectionToChat }: TerminalTabProps) {
+export function TerminalTab({ cwd, onAddSelectionToChat, onNewSession }: TerminalTabProps) {
   const { t } = useI18n()
 
   const { addSelectionToChat, hostRef, selection, selectionStyle, shellName, status } = useTerminalSession({
@@ -25,16 +27,31 @@ export function TerminalTab({ cwd, onAddSelectionToChat }: TerminalTabProps) {
     onAddSelectionToChat
   })
 
-  const label = t.rightSidebar.terminalHide
+  const hideLabel = t.rightSidebar.terminalHide
+  const newSessionLabel = t.rightSidebar.terminalNewSession
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 px-2.5">
         <SidebarPanelLabel className="text-(--ui-text-secondary)!">{shellName}</SidebarPanelLabel>
-        <Tip label={label}>
+        {onNewSession && (
+          <Tip label={newSessionLabel}>
+            <Button
+              aria-label={newSessionLabel}
+              className="ml-auto size-6 rounded-md text-(--ui-text-secondary)!"
+              onClick={onNewSession}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <Codicon name="add" size="0.875rem" />
+            </Button>
+          </Tip>
+        )}
+        <Tip label={hideLabel}>
           <Button
-            aria-label={label}
-            className="ml-auto size-6 rounded-md text-(--ui-text-secondary)!"
+            aria-label={hideLabel}
+            className={cn('size-6 rounded-md text-(--ui-text-secondary)!', !onNewSession && 'ml-auto')}
             onClick={() => setTerminalTakeover(false)}
             size="icon"
             type="button"

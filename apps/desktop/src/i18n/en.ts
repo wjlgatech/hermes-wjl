@@ -1631,6 +1631,7 @@ export const en: Translations = {
     loadingTree: 'Loading file tree',
     loadingFiles: 'Loading files',
     terminalHide: 'Hide terminal',
+    terminalNewSession: 'New session',
     addToChat: 'Add to chat'
   },
 
