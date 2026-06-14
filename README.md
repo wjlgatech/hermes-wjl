@@ -15,6 +15,20 @@
   <a href="README.ur-pk.md"><img src="https://img.shields.io/badge/Lang-اردو-green?style=for-the-badge" alt="اردو"></a>
 </p>
 
+> ## 🛩️ This is `hermes-wjl` — a personal distribution of Hermes by [@wjlgatech](https://github.com/wjlgatech)
+>
+> Stock Hermes is a brilliant *chat* agent. This fork turns it into **a cockpit you watch it code in.**
+> It's the official Hermes — [auto-synced from Nous Research upstream every day](.github/workflows/sync-upstream.yml) — **plus** what I build and use daily:
+>
+> - **🛩️ The Cockpit** — an agent-native IDE *inside the dashboard*: a live Monaco editor + real terminals that **Hermes drives while you watch**, its edits streaming in stroke-by-stroke, with a shared PTY so you can grab the keyboard mid-task. (the **Cockpit** tab, or run `hermes-cockpit`.)
+> - **🔌 AG-UI adapter** — exposes Hermes as a [CopilotKit](https://copilotkit.ai)/AG-UI backend (`hermes-agui`), so any AG-UI frontend can drive it over HTTP/SSE.
+>
+> **Why it matters:** most agents are a black box — you send a prompt and hope. The Cockpit gives Hermes a *windshield*: you see every file it touches and command it runs, in real time, and take the wheel the instant you want to. You're not reading a diff after the fact — you're watching the work happen.
+>
+> **New here?** For the easiest setup use [official Hermes](https://hermes-agent.nousresearch.com). Use this fork if you want the cockpit. Everything below is the upstream Hermes README.
+>
+> ---
+
 **The self-improving AI agent built by [Nous Research](https://nousresearch.com).** It's the only agent with a built-in learning loop — it creates skills from experience, improves them during use, nudges itself to persist knowledge, searches its own past conversations, and builds a deepening model of who you are across sessions. Run it on a $5 VPS, a GPU cluster, or serverless infrastructure that costs nearly nothing when idle. It's not tied to your laptop — talk to it from Telegram while it works on a cloud VM.
 
 Use any model you want — [Nous Portal](https://portal.nousresearch.com), [OpenRouter](https://openrouter.ai) (200+ models), [NovitaAI](https://novita.ai) (AI-native cloud for Model API, Agent Sandbox, and GPU Cloud), [NVIDIA NIM](https://build.nvidia.com) (Nemotron), [Xiaomi MiMo](https://platform.xiaomimimo.com), [z.ai/GLM](https://z.ai), [Kimi/Moonshot](https://platform.moonshot.ai), [MiniMax](https://www.minimax.io), [Hugging Face](https://huggingface.co), OpenAI, or your own endpoint. Switch with `hermes model` — no code changes, no lock-in.
