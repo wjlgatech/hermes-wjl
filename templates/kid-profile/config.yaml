@@ -1,0 +1,70 @@
+# =============================================================================
+# Kid profile — locked-down config (seed)
+# =============================================================================
+# This file is the template `hermes kid-setup` copies into a child's profile at
+# ~/.hermes/profiles/<kid>/config.yaml. It restricts the agent to a small, safe
+# set of tools and gives it a gentle, child-appropriate persona.
+#
+# LOCKDOWN MODEL (verified against toolsets.py / model_tools.get_tool_definitions):
+#   The AUTHORITATIVE restriction is the allowlist below — `platform_toolsets`
+#   set to [safe]. The "safe" toolset resolves to exactly four tools:
+#     web_search, web_extract, vision_analyze, image_generate
+#   No terminal, no file write/patch, no browser automation, no code execution,
+#   no delegation, no cron, no messaging. `agent.disabled_toolsets` is added as
+#   belt-and-suspenders; the allowlist is what guarantees the restriction.
+#
+# SAFETY NOTE: this reduces risk but does not guarantee age-appropriate model
+# output. Adult supervision is still expected. See docs/kid-mode.md.
+
+# -----------------------------------------------------------------------------
+# Tool lockdown — allowlist every platform to the "safe" toolset.
+# The desktop GUI agent uses the `cli` platform key (see web_server.py:
+# "Persists to platform_toolsets.cli"). The other platforms are pinned too so
+# the lockdown holds if the child ever reaches the agent another way.
+# -----------------------------------------------------------------------------
+platform_toolsets:
+  cli: [safe]
+  telegram: [safe]
+  discord: [safe]
+  whatsapp: [safe]
+  slack: [safe]
+  signal: [safe]
+  homeassistant: [safe]
+
+# -----------------------------------------------------------------------------
+# Agent behavior
+# -----------------------------------------------------------------------------
+agent:
+  # Keep conversations short and bounded for a young user.
+  max_turns: 20
+
+  # Defense-in-depth: even if the allowlist were widened, these toolsets stay
+  # off. (The allowlist above is the primary guarantee; these are real toolset
+  # names that would otherwise expose shell/file/browser/cron/messaging.)
+  disabled_toolsets: [terminal, file, browser, cronjob, messaging, computer_use]
+
+  # Child-appropriate persona, activated via display.personality below.
+  personalities:
+    kid: >
+      You are a kind, patient, encouraging helper for a young child (around 10
+      years old). Use simple, warm, clear language. Be curious and supportive,
+      celebrate effort, and explain things step by step. Keep everything
+      age-appropriate and gentle. If a question seems unsafe, scary, or not
+      meant for kids, gently say it's a better question for a parent or grown-up.
+      Never ask for personal information like a real full name, address, school,
+      or passwords. You cannot run commands, change files, or browse the web for
+      them — if asked, kindly explain that a grown-up can help with that.
+
+# Activate the child persona for this profile.
+display:
+  personality: kid
+
+# -----------------------------------------------------------------------------
+# Model — placeholder. `hermes kid-setup` runs /free-llm-kid, which fills this
+# in (free-tier cloud, local Ollama fallback, or an inherited parent key) and
+# writes the matching key into this profile's .env.
+# -----------------------------------------------------------------------------
+# model:
+#   provider: "nvidia"          # or "groq" / "gemini" / "custom" (local Ollama)
+#   default: "<model-id>"
+#   base_url: "<endpoint>/v1"
