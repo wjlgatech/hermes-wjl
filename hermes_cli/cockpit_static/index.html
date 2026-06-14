@@ -36,7 +36,27 @@
   #editorBadge { position:absolute; top:8px; right:16px; z-index:5; background:#1f6feb;
     color:#fff; font-size:11px; padding:3px 8px; border-radius:10px; opacity:0; transition:opacity .2s; }
   #editorBadge.show { opacity:1; }
-  #term { grid-area:term; background:#000; overflow:hidden; }
+  #term { grid-area:term; background:#000; overflow:hidden; display:flex; flex-direction:column; }
+  #termtabs { display:flex; align-items:center; gap:3px; background:var(--panel);
+    border-bottom:1px solid var(--border); padding:3px 4px; min-height:30px; overflow-x:auto; }
+  .termtab { display:flex; align-items:center; gap:6px; padding:3px 9px; font-size:11px;
+    color:var(--fg); background:#0d1117; border:1px solid var(--border); border-radius:5px 5px 0 0;
+    cursor:pointer; white-space:nowrap; user-select:none; }
+  .termtab:hover { background:#21262d; }
+  .termtab.active { background:#000; color:var(--accent); border-color:var(--accent); }
+  .termtab .tabclose { opacity:.45; padding:0 3px; border-radius:3px; font-size:13px; line-height:1; }
+  .termtab .tabclose:hover { opacity:1; background:#f8514966; color:#fff; }
+  #termadd { background:transparent; color:var(--fg); border:1px solid var(--border);
+    border-radius:5px; padding:1px 9px; font-size:14px; cursor:pointer; line-height:1.4; }
+  #termadd:hover { border-color:var(--accent); color:var(--accent); }
+  #termpanes { position:relative; flex:1; min-height:0; }
+  #termpanes.split { display:flex; }
+  .termpane { position:absolute; inset:0; }
+  #termpanes.split .termpane { position:relative; inset:auto; flex:1 1 0; min-width:0; }
+  #termpanes.split .termpane.left { border-right:1px solid var(--accent); }
+  #termsplit.on { border-color:var(--accent); color:var(--accent); }
+  .termtab.secondary { box-shadow: inset 0 -2px 0 #f0883e; }
+  .tablabel[contenteditable="true"] { outline:1px solid var(--accent); border-radius:2px; padding:0 3px; cursor:text; }
   #openpath { font-size:12px; opacity:.8; }
 </style>
 </head>
@@ -55,7 +75,10 @@
     <div id="editorBadge">agent edited — reloaded</div>
     <div id="editor"></div>
   </div>
-  <div id="term"></div>
+  <div id="term">
+    <div id="termtabs"><button id="termadd" title="New terminal (⌘T)">+</button><button id="termsplit" title="Split / unsplit (⌘D)">◫</button></div>
+    <div id="termpanes"></div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
@@ -166,30 +189,128 @@ es.onmessage = (ev) => {
 es.onopen = () => setStatus("● live");
 es.onerror = () => setStatus("○ reconnecting…");
 
-// ── Stage 0: PTY terminal ────────────────────────────────────────────────────
-const term = new Terminal({ fontSize: 13, theme: { background: "#000000" }, cursorBlink: true });
-const fit = new FitAddon.FitAddon();
-term.loadAddon(fit);
-term.open($("#term"));
-fit.fit();
-
+// ── Stage 0+3: tabbed PTY terminals (each tab is its own named shell) ─────────
 const wsProto = location.protocol === "https:" ? "wss" : "ws";
-const ws = new WebSocket(`${wsProto}://${location.host}${BASE}cockpit/ws/pty?name=main`);
-ws.onopen = () => {
-  const { cols, rows } = term;
-  ws.send(JSON.stringify({ type: "resize", cols, rows }));
-  term.focus();
-};
-ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type === "output") term.write(m.data); };
-ws.onclose = () => term.write("\r\n[cockpit] terminal disconnected\r\n");
-term.onData((d) => ws.readyState === 1 && ws.send(JSON.stringify({ type: "input", data: d })));
-const sendResize = () => { fit.fit(); if (ws.readyState === 1) ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows })); };
-window.addEventListener("resize", sendResize);
-setTimeout(sendResize, 300);
+const terms = [];          // {id, name, term, fit, ws, paneEl, tabEl}
+let activeTermId = null, termSeq = 0;
 
-// Cmd/Ctrl-S saves
+function resizeTerm(t) {
+  try { t.fit.fit(); } catch (e) {}
+  if (t.ws.readyState === 1) t.ws.send(JSON.stringify({ type: "resize", cols: t.term.cols, rows: t.term.rows }));
+}
+
+let splitMode = false;
+
+// In split mode, show the active terminal next to the one after it.
+function visibleIds() {
+  if (activeTermId == null) return [];
+  if (!splitMode || terms.length < 2) return [activeTermId];
+  const ai = Math.max(0, terms.findIndex(t => t.id === activeTermId));
+  return [activeTermId, terms[(ai + 1) % terms.length].id];
+}
+
+function renderLayout() {
+  const vis = visibleIds();
+  $("#termpanes").classList.toggle("split", vis.length > 1);
+  terms.forEach(t => {
+    const idx = vis.indexOf(t.id);
+    t.paneEl.style.display = idx >= 0 ? "block" : "none";
+    t.paneEl.classList.toggle("left", idx === 0 && vis.length > 1);
+    t.tabEl.classList.toggle("active", t.id === activeTermId);
+    t.tabEl.classList.toggle("secondary", vis.length > 1 && t.id === vis[1]);
+  });
+  setTimeout(() => {
+    vis.forEach(id => { const t = terms.find(x => x.id === id); if (t) resizeTerm(t); });
+    const a = terms.find(x => x.id === activeTermId); if (a) a.term.focus();
+  }, 0);
+}
+
+function activateTerminal(id) { activeTermId = id; renderLayout(); }
+
+function toggleSplit() {
+  splitMode = !splitMode;
+  $("#termsplit").classList.toggle("on", splitMode);
+  if (splitMode && terms.length < 2) newTerminal();  // need a 2nd pane (renders)
+  else renderLayout();
+}
+
+function closeTerminal(id) {
+  const i = terms.findIndex(t => t.id === id);
+  if (i < 0) return;
+  const t = terms[i];
+  try { t.ws.close(); } catch (e) {}
+  try { t.term.dispose(); } catch (e) {}
+  t.paneEl.remove(); t.tabEl.remove();
+  terms.splice(i, 1);
+  if (activeTermId === id) {
+    if (terms.length) activateTerminal(terms[Math.max(0, i - 1)].id);
+    else newTerminal();   // always keep at least one terminal open
+  }
+}
+
+function newTerminal(name) {
+  const id = ++termSeq;
+  // First terminal is "main" so the agent's command-injection (/run) shows here.
+  name = name || (id === 1 ? "main" : "term-" + id);
+  const paneEl = document.createElement("div");
+  paneEl.className = "termpane";
+  $("#termpanes").appendChild(paneEl);
+
+  const term = new Terminal({ fontSize: 13, theme: { background: "#000000" }, cursorBlink: true });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(paneEl);
+
+  const ws = new WebSocket(`${wsProto}://${location.host}${BASE}cockpit/ws/pty?name=${encodeURIComponent(name)}`);
+  const rec = { id, name, term, fit, ws, paneEl, tabEl: null };
+  ws.onopen = () => { resizeTerm(rec); if (id === activeTermId) term.focus(); };
+  ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type === "output") term.write(m.data); };
+  ws.onclose = () => term.write("\r\n[cockpit] terminal closed\r\n");
+  term.onData((d) => ws.readyState === 1 && ws.send(JSON.stringify({ type: "input", data: d })));
+
+  const tabEl = document.createElement("div");
+  tabEl.className = "termtab";
+  tabEl.innerHTML = `<span class="tablabel"></span><span class="tabclose" title="Close">×</span>`;
+  tabEl.querySelector(".tablabel").textContent = id === 1 ? "Terminal 1 ·main" : "Terminal " + id;
+  tabEl.onclick = (e) => { if (!e.target.classList.contains("tabclose")) activateTerminal(id); };
+  tabEl.querySelector(".tabclose").onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
+  // double-click the label to rename the tab (display only; PTY name unchanged)
+  const _label = tabEl.querySelector(".tablabel");
+  _label.ondblclick = (e) => {
+    e.stopPropagation();
+    _label.contentEditable = "true"; _label.focus();
+    const sel = window.getSelection(); sel.removeAllRanges();
+    const r = document.createRange(); r.selectNodeContents(_label); sel.addRange(r);
+    _label.addEventListener("blur", () => {
+      _label.contentEditable = "false";
+      _label.textContent = (_label.textContent || "").trim() || ("Terminal " + id);
+    }, { once: true });
+    _label.onkeydown = (ke) => { if (ke.key === "Enter") { ke.preventDefault(); _label.blur(); } };
+  };
+  $("#termtabs").insertBefore(tabEl, $("#termadd"));
+  rec.tabEl = tabEl;
+
+  terms.push(rec);
+  activateTerminal(id);
+  return rec;
+}
+
+$("#termadd").onclick = () => newTerminal();
+$("#termsplit").onclick = toggleSplit;
+newTerminal();   // open the first terminal
+
+window.addEventListener("resize", () => {
+  visibleIds().forEach(id => { const t = terms.find(x => x.id === id); if (t) resizeTerm(t); });
+});
+
+// Keyboard: ⌘/Ctrl-S save · ⌘T new terminal · ⌘W close · ⌘D split/unsplit
 window.addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveFile(); }
+  if (!(e.metaKey || e.ctrlKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === "s") { e.preventDefault(); saveFile(); }
+  else if (k === "t") { e.preventDefault(); newTerminal(); }
+  else if (k === "d") { e.preventDefault(); toggleSplit(); }
+  else if (k === "w" && activeTermId !== null) { e.preventDefault(); closeTerminal(activeTermId); }
 });
 </script>
 </body>

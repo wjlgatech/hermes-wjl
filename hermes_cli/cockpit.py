@@ -490,7 +490,9 @@ def build_cockpit_app(root: Optional[Path] = None):
     # ── static UI ────────────────────────────────────────────────────────────
     @app.get("/", response_class=HTMLResponse)
     async def index():
-        return _COCKPIT_HTML
+        # Read fresh each request so UI edits show on a page reload (no backend
+        # restart needed); falls back to the import-time copy if the file moved.
+        return _load_html() or _COCKPIT_HTML
 
     return app
 
