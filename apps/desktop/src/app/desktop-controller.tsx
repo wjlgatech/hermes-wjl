@@ -42,6 +42,7 @@ import { $filePreviewTarget, $previewTarget, closeActiveRightRailTab } from '../
 import {
   $activeGatewayProfile,
   $freshSessionRequest,
+  $newChatProfile,
   $profileScope,
   ALL_PROFILES,
   normalizeProfileKey,
@@ -745,6 +746,15 @@ export function DesktopController() {
     [requestGateway, startFreshSessionDraft]
   )
 
+  // The "+" in the terminal header opens a fresh session, mirroring the sidebar
+  // New Session button and the session.new keybind — points new chats at the
+  // live profile and lets the user retarget the project from the status bar.
+  const startNewTerminalSession = useCallback(() => {
+    $newChatProfile.set(null)
+    startFreshSessionDraft()
+    window.dispatchEvent(new CustomEvent('hermes:new-session-shortcut'))
+  }, [startFreshSessionDraft])
+
   const handleSkinCommand = useSkinCommand()
 
   const {
@@ -883,7 +893,11 @@ export function DesktopController() {
   // where it shows. Lives in main's stacking context (not the root overlay layer)
   // so pane resize handles still paint above it. Toggling never rebuilds the shell.
   const mainOverlays = (
-    <PersistentTerminal cwd={currentCwd} onAddSelectionToChat={composer.addTerminalSelectionAttachment} />
+    <PersistentTerminal
+      cwd={currentCwd}
+      onAddSelectionToChat={composer.addTerminalSelectionAttachment}
+      onNewSession={startNewTerminalSession}
+    />
   )
 
   const overlays = (

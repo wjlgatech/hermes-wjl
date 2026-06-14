@@ -1275,6 +1275,7 @@ export interface Translations {
     loadingTree: string
     loadingFiles: string
     terminalHide: string
+    terminalNewSession: string
     addToChat: string
   }
 
