@@ -1812,7 +1812,8 @@ export const zh: Translations = {
     loadingTree: '正在加载文件树',
     loadingFiles: '正在加载文件',
     terminalHide: '隐藏终端',
-    terminalNewSession: '新会话',
+    terminalNewTab: '新终端',
+    terminalCloseTab: '关闭终端',
     addToChat: '添加到对话'
   },
 
