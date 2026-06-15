@@ -390,7 +390,23 @@ export function useTerminalSession({ active = true, cwd, onAddSelectionToChat, o
     termRef.current = term
     term.loadAddon(fit)
     term.loadAddon(new Unicode11Addon())
-    term.loadAddon(new WebLinksAddon())
+    // WebLinksAddon's default click handler is window.open(), which is a no-op
+    // in the sandboxed Electron renderer — so detected links underline but never
+    // open. Route clicks through the OS like VS Code does: openExternalUrl() in
+    // main.cjs sends http(s) to the system browser and file paths to the OS
+    // handler. Fall back to window.open only if the bridge is somehow missing.
+    term.loadAddon(
+      new WebLinksAddon((event, uri) => {
+        event.preventDefault()
+        const openExternal = window.hermesDesktop?.openExternal
+
+        if (openExternal) {
+          void openExternal(uri)
+        } else {
+          window.open(uri, '_blank', 'noopener,noreferrer')
+        }
+      })
+    )
     term.unicode.activeVersion = '11'
 
     // Let the GUI chat agent read this pane via the `read_terminal` tool: the
