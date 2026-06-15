@@ -266,6 +266,7 @@ from hermes_cli.subcommands._shared import add_accept_hooks_flag as _add_accept_
 from hermes_cli.subcommands.cron import build_cron_parser
 from hermes_cli.subcommands.gateway import build_gateway_parser
 from hermes_cli.subcommands.profile import build_profile_parser
+from hermes_cli.subcommands.kid_setup import build_kid_setup_parser, cmd_kid_setup
 from hermes_cli.subcommands.model import build_model_parser
 from hermes_cli.subcommands.setup import build_setup_parser
 from hermes_cli.subcommands.postinstall import build_postinstall_parser
@@ -5833,8 +5834,9 @@ def _update_via_zip(args):
             f"--branch {branch}`, or update against main with `hermes update`."
         )
         sys.exit(1)
+    # fork-override: archive fallback pulls from this fork (see branding/fork-identity.md)
     zip_url = (
-        f"https://github.com/NousResearch/hermes-agent/archive/refs/heads/{branch}.zip"
+        f"https://github.com/wjlgatech/hermes-wjl/archive/refs/heads/{branch}.zip"
     )
 
     print("→ Downloading latest version...")
@@ -6237,13 +6239,16 @@ def _discard_stashed_changes(
 # Fork detection and upstream management for `hermes update`
 # =========================================================================
 
+# fork-override: this fork is the canonical "official" repo for clone/update
+# detection (see branding/fork-identity.md). Upstream (NousResearch) is still
+# added as a separate `upstream` remote below.
 OFFICIAL_REPO_URLS = {
-    "https://github.com/NousResearch/hermes-agent.git",
-    "git@github.com:NousResearch/hermes-agent.git",
-    "https://github.com/NousResearch/hermes-agent",
-    "git@github.com:NousResearch/hermes-agent",
+    "https://github.com/wjlgatech/hermes-wjl.git",
+    "git@github.com:wjlgatech/hermes-wjl.git",
+    "https://github.com/wjlgatech/hermes-wjl",
+    "git@github.com:wjlgatech/hermes-wjl",
 }
-OFFICIAL_REPO_URL = "https://github.com/NousResearch/hermes-agent.git"
+OFFICIAL_REPO_URL = "https://github.com/wjlgatech/hermes-wjl.git"
 SKIP_UPSTREAM_PROMPT_FILE = ".skip_upstream_prompt"
 
 
@@ -12344,6 +12349,11 @@ def main():
     # gui command  (parser built in hermes_cli/subcommands/gui.py)
     # =========================================================================
     build_gui_parser(subparsers, cmd_gui=cmd_gui)
+
+    # =========================================================================
+    # kid-setup command  (parser built in hermes_cli/subcommands/kid_setup.py)
+    # =========================================================================
+    build_kid_setup_parser(subparsers, cmd_kid_setup=cmd_kid_setup)
 
     # =========================================================================
     # logs command  (parser built in hermes_cli/subcommands/logs.py)

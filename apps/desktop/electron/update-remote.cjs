@@ -12,8 +12,9 @@
  * testable without booting Electron (main.cjs requires('electron') at load).
  */
 
-const OFFICIAL_REPO_HTTPS_URL = 'https://github.com/NousResearch/hermes-agent.git'
-const OFFICIAL_REPO_CANONICAL = 'github.com/nousresearch/hermes-agent'
+// fork-override: this fork is canonical for update checks (see branding/fork-identity.md)
+const OFFICIAL_REPO_HTTPS_URL = 'https://github.com/wjlgatech/hermes-wjl.git'
+const OFFICIAL_REPO_CANONICAL = 'github.com/wjlgatech/hermes-wjl'
 
 // Normalize common GitHub remote URL forms to `host/owner/repo` (lowercased,
 // no trailing slash, no .git suffix) so SSH and HTTPS forms of the same repo

@@ -39,6 +39,15 @@ Prebuilt installers are built and distributed via [the Hermes Desktop website.](
 
 ---
 
+## Kid mode
+
+Setting Hermes up for a child? `hermes kid-setup` creates a locked-down profile
+(safe tools only + a child persona) on a **free** LLM and makes the desktop open
+straight into it — no sign-in, no keys for the child. See
+[`docs/kid-mode.md`](../../docs/kid-mode.md).
+
+---
+
 ## Updating
 
 The app checks for updates in the background and offers a one-click update when one is ready. You can also update any time from the CLI:

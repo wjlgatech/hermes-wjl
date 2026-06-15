@@ -188,8 +188,9 @@ fn truncate_ref(s: &str) -> &str {
 /// Downloads to `dest_path` via reqwest with rustls. Atomically renames
 /// `dest_path.tmp` → `dest_path` so partial writes don't poison the cache.
 async fn download(kind: ScriptKind, commit_or_ref: &str, dest_path: &Path) -> Result<()> {
+    // fork-override: fetch install scripts from this fork (see branding/fork-identity.md)
     let url = format!(
-        "https://raw.githubusercontent.com/NousResearch/hermes-agent/{}/scripts/{}",
+        "https://raw.githubusercontent.com/wjlgatech/hermes-wjl/{}/scripts/{}",
         commit_or_ref,
         kind.filename()
     );

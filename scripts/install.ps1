@@ -56,10 +56,24 @@ param(
     #   * The canonical CLI one-liner (irm | iex) omits the flag too;
     #     terminal users don't need a desktop binary built for them, and
     #     `hermes desktop` already builds on demand.
-    [switch]$IncludeDesktop
+    [switch]$IncludeDesktop,
+
+    # --- Kid mode (opt-in) ---
+    # Build the desktop and run `hermes kid-setup` (locked-down profile + free
+    # LLM) at the end, skipping the normal API-key wizard. -KidLlm picks the
+    # LLM: free | local | inherit.
+    [switch]$Kid,
+    [string]$KidLlm = "free"
 )
 
 $ErrorActionPreference = "Stop"
+
+# Kid mode implies a desktop build and skips the normal API-key wizard
+# (kid-setup configures the LLM instead).
+if ($Kid) {
+    $IncludeDesktop = $true
+    $SkipSetup = $true
+}
 
 # Suppress Invoke-WebRequest's per-chunk progress bar.  Windows PowerShell
 # 5.1's progress UI repaints synchronously on every received byte, which
@@ -92,8 +106,9 @@ try {
 # Configuration
 # ============================================================================
 
-$RepoUrlSsh = "git@github.com:NousResearch/hermes-agent.git"
-$RepoUrlHttps = "https://github.com/NousResearch/hermes-agent.git"
+# fork-override: clone from this fork, not upstream (see branding/fork-identity.md)
+$RepoUrlSsh = "git@github.com:wjlgatech/hermes-wjl.git"
+$RepoUrlHttps = "https://github.com/wjlgatech/hermes-wjl.git"
 $PythonVersion = "3.11"
 $NodeVersion = "22"
 
@@ -1329,13 +1344,13 @@ function Install-Repository {
                 # for.  GitHub supports archive URLs for commits, tags, and
                 # branches; we honour Commit > Tag > Branch.
                 if ($Commit) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/$Commit.zip"
+                    $zipUrl = "https://github.com/wjlgatech/hermes-wjl/archive/$Commit.zip"
                     $zipLabel = $Commit
                 } elseif ($Tag) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/tags/$Tag.zip"
+                    $zipUrl = "https://github.com/wjlgatech/hermes-wjl/archive/refs/tags/$Tag.zip"
                     $zipLabel = $Tag
                 } else {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/heads/$Branch.zip"
+                    $zipUrl = "https://github.com/wjlgatech/hermes-wjl/archive/refs/heads/$Branch.zip"
                     $zipLabel = $Branch
                 }
                 $zipPath = "$env:TEMP\hermes-agent-$zipLabel.zip"
@@ -2599,6 +2614,28 @@ function Invoke-SetupWizard {
     Pop-Location
 }
 
+function Invoke-KidSetup {
+    # Kid mode: seed the locked-down kid profile + free LLM and make it active.
+    # Non-fatal — the parent can re-run 'hermes kid-setup' manually.
+    if (-not $Kid) { return }
+
+    Write-Host ""
+    Write-Info "Setting up kid mode (locked-down profile + LLM: $KidLlm)..."
+    Push-Location $InstallDir
+    try {
+        if (-not $NoVenv) {
+            & ".\venv\Scripts\python.exe" -m hermes_cli.main kid-setup --llm $KidLlm
+        } else {
+            python -m hermes_cli.main kid-setup --llm $KidLlm
+        }
+        Write-Success "Kid mode ready. Launch with: hermes desktop"
+    } catch {
+        Write-Warn "kid-setup did not finish — run 'hermes kid-setup' manually."
+    } finally {
+        Pop-Location
+    }
+}
+
 function Start-GatewayIfConfigured {
     $envPath = "$HermesHome\.env"
     if (-not (Test-Path $envPath)) { return }
@@ -2834,6 +2871,11 @@ $InstallStages += @(
     @{ Name = "configure";        Title = "Configuring API keys and models";      Category = "post-install"; NeedsUserInput = $true;  Worker = "Stage-Configure" }
     @{ Name = "gateway";          Title = "Starting messaging gateway";           Category = "post-install"; NeedsUserInput = $true;  Worker = "Stage-Gateway" }
 )
+if ($Kid) {
+    # Kid mode: after everything is installed, seed the locked-down kid profile
+    # + free LLM and make it active. Runs non-interactively.
+    $InstallStages += @{ Name = "kid"; Title = "Setting up kid mode"; Category = "post-install"; NeedsUserInput = $false; Worker = "Stage-Kid" }
+}
 
 # Stage workers -- thin wrappers that delegate to the existing Install-* /
 # Test-* / Invoke-* functions while preserving their error semantics.  Kept
@@ -2872,6 +2914,7 @@ function Stage-PlatformSdks     { Resolve-UvCmd; Install-PlatformSdks }
 function Stage-BootstrapMarker  { Write-BootstrapMarker }
 function Stage-Configure        { Invoke-SetupWizard }
 function Stage-Gateway          { Start-GatewayIfConfigured }
+function Stage-Kid              { Invoke-KidSetup }
 
 function Get-InstallStage {
     param([string]$Name)
