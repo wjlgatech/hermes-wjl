@@ -12,9 +12,13 @@ doc is the concrete checklist (covers plan units U2, U3, U7).
 |-------|-------|
 | Fork redirection (clone/update → `wjlgatech/hermes-wjl`) | ✅ Done (U1) |
 | Locked-down kid profile + `/free-llm-kid` + `hermes kid-setup` | ✅ Done & tested (U4/U5/U6) |
-| Rebranded Tauri bootstrap installer (U2) | ◻️ Config change pending |
-| Signed/notarized cross-platform builds + hosting (U3) | ⛔ Needs external assets |
-| Installer → `hermes kid-setup` wiring (U7) | ◻️ Pending U3 |
+| Rebranded Tauri bootstrap installer identifier (U2) | ✅ Done |
+| Installer → `hermes kid-setup` wiring — `--kid` (U7) | ✅ `install.sh` done; `install.ps1` done (unverified — needs a Windows run) |
+| Cross-platform build/publish workflow + download page (U3) | ✅ Authored (`build-sign-installers.yml`, `docs/download.md`) — builds **unsigned** today |
+| **Code-signing + notarization** (U3) | ⛔ **Needs your certs** — the only true blocker left |
+
+**What's left is the signing itself:** add the certificate secrets below and cut
+a tagged release. The build pipeline already runs (unsigned) without them.
 
 ## Prerequisites you must provide (U3)
 
