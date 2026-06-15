@@ -1181,6 +1181,18 @@ automatically scope to the active profile.
    This is intentional — it lets `hermes -p coder profile list` see all profiles regardless
    of which one is active.
 
+### Kid mode (fork feature)
+
+`hermes kid-setup` (`hermes_cli/subcommands/kid_setup.py`) seeds a **locked-down
+child profile** from `templates/kid-profile/` and marks it active so the desktop
+opens with no onboarding wall. The lockdown is the **allowlist** (`platform_toolsets`
+pinned to the `safe` toolset → web/vision/image only; the denylist alone leaks
+`execute_code`/`delegate_task`) plus a child persona (`SOUL.md` + `agent.personalities.kid`)
+and bounded `max_turns`. The LLM is configured by `hermes_cli/kid_llm.py`
+(`build_kid_model_config`) / the `/free-llm-kid` skill: free-tier cloud
+(NVIDIA NIM/Groq/Gemini) → local Ollama fallback → inherit-parent. Parent guide:
+`docs/kid-mode.md`. Re-running re-applies the template (idempotent repair).
+
 ## Known Pitfalls
 
 ### DO NOT hardcode `~/.hermes` paths

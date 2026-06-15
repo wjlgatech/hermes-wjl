@@ -1,0 +1,100 @@
+# Hermes Kid Mode — parent guide
+
+Set up Hermes for a child: a locked-down assistant (no shell, files, browser, or
+code execution), a gentle child persona, and a **free** LLM by default — running
+on **this fork** (`wjlgatech/hermes-wjl`).
+
+> **Safety, honestly:** kid mode removes risky *tools* and uses a child-friendly
+> persona, but it cannot guarantee that the underlying model never says something
+> you'd want to review. **Adult supervision is still expected.** Conversations
+> live under the child's profile and can be reviewed at any time.
+
+---
+
+## TL;DR
+
+On the child's machine, once Hermes is installed:
+
+```bash
+hermes kid-setup            # free-tier cloud LLM, falls back to local
+hermes desktop              # opens straight into locked-down kid mode
+```
+
+That's it — no sign-in screen, no API keys for the child to enter.
+
+---
+
+## What kid mode does
+
+`hermes kid-setup` creates a profile (default name `kid`) seeded from
+`templates/kid-profile/` and makes it the active profile, so the desktop app
+opens into it with **no onboarding wall**. The profile:
+
+- **Restricts tools** to a safe allowlist — only web search, web read, image
+  understanding, and image generation. No terminal, file editing, browser
+  automation, code execution, task delegation, scheduling, or messaging.
+- **Uses a child persona** (simple, warm, encouraging; declines unsafe topics;
+  never asks for personal info) — see `templates/kid-profile/SOUL.md`.
+- **Bounds conversations** to keep them short.
+
+Re-running `hermes kid-setup` re-applies the lockdown, so it also *repairs* a
+profile that's been tampered with.
+
+---
+
+## Choosing the LLM
+
+`hermes kid-setup --llm <mode>` (the `/free-llm-kid` skill explains the choices):
+
+| Mode | Command | What it is | Trade-off |
+|------|---------|-----------|-----------|
+| **free** (default) | `hermes kid-setup --llm free` | Free-tier cloud: NVIDIA NIM, Groq, or Gemini | Free to you, good quality; needs a one-time **free key** (you get it) and is rate-limited |
+| **local** | `hermes kid-setup --llm local` | A model on the child's machine via **Ollama** | Private, offline, no key; needs a capable machine + a model download, lower quality |
+| **inherit** | `hermes kid-setup --llm inherit` | Copies **your** key + model into the kid profile | Instant, full quality; but a paid key on the child's machine carries **cost/abuse risk** |
+
+Recommended: **free with local fallback** — try the free cloud model, fall back
+to local when there's no key, it's rate-limited, or you're offline.
+
+### Getting a free key (you do this once)
+
+| Provider | Where | Env var |
+|----------|-------|---------|
+| NVIDIA NIM (default) | <https://build.nvidia.com> | `NVIDIA_API_KEY` |
+| Groq | <https://console.groq.com/keys> | `GROQ_API_KEY` |
+| Gemini | <https://aistudio.google.com/apikey> | `GEMINI_API_KEY` |
+
+Then: `hermes kid-setup --llm free --provider nvidia --key <your-key>`
+(or set the env var and omit `--key`).
+
+No key handy? `hermes kid-setup --llm local` needs none — install
+[Ollama](https://ollama.com) and `ollama pull llama3.2` first.
+
+---
+
+## Reviewing and changing things
+
+- **Review chats:** the child's conversations are stored under their profile
+  (`~/.hermes/profiles/kid/sessions/`). You can also open the profile in the
+  desktop app and read the history.
+- **Switch the model later:** re-run `hermes kid-setup --llm <mode> …`.
+- **Switch back to your own profile:** in the desktop app's profile switcher, or
+  `hermes profile use default`.
+- **Update Hermes:** `hermes update` (pulls the latest from this fork).
+
+---
+
+## Installing Hermes (today vs. the goal)
+
+**Today (works now):** install the fork, then run `hermes kid-setup`:
+
+```bash
+# from this fork
+curl -fsSL https://raw.githubusercontent.com/wjlgatech/hermes-wjl/main/scripts/install.sh | bash
+hermes kid-setup
+hermes desktop
+```
+
+**The goal — a true download-and-double-click installer for the child** — is
+tracked but **not finished**: it needs code-signing/notarization certificates
+and hosting. See [`docs/kid-mode-distribution.md`](kid-mode-distribution.md) for
+exactly what's required and what's left to build.
