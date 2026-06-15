@@ -5823,8 +5823,9 @@ def _update_via_zip(args):
             f"--branch {branch}`, or update against main with `hermes update`."
         )
         sys.exit(1)
+    # fork-override: archive fallback pulls from this fork (see branding/fork-identity.md)
     zip_url = (
-        f"https://github.com/NousResearch/hermes-agent/archive/refs/heads/{branch}.zip"
+        f"https://github.com/wjlgatech/hermes-wjl/archive/refs/heads/{branch}.zip"
     )
 
     print("→ Downloading latest version...")
@@ -6227,13 +6228,16 @@ def _discard_stashed_changes(
 # Fork detection and upstream management for `hermes update`
 # =========================================================================
 
+# fork-override: this fork is the canonical "official" repo for clone/update
+# detection (see branding/fork-identity.md). Upstream (NousResearch) is still
+# added as a separate `upstream` remote below.
 OFFICIAL_REPO_URLS = {
-    "https://github.com/NousResearch/hermes-agent.git",
-    "git@github.com:NousResearch/hermes-agent.git",
-    "https://github.com/NousResearch/hermes-agent",
-    "git@github.com:NousResearch/hermes-agent",
+    "https://github.com/wjlgatech/hermes-wjl.git",
+    "git@github.com:wjlgatech/hermes-wjl.git",
+    "https://github.com/wjlgatech/hermes-wjl",
+    "git@github.com:wjlgatech/hermes-wjl",
 }
-OFFICIAL_REPO_URL = "https://github.com/NousResearch/hermes-agent.git"
+OFFICIAL_REPO_URL = "https://github.com/wjlgatech/hermes-wjl.git"
 SKIP_UPSTREAM_PROMPT_FILE = ".skip_upstream_prompt"
 
 
