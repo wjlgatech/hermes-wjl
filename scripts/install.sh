@@ -81,6 +81,8 @@ STAGE_NAME=""
 JSON_OUTPUT=false
 NON_INTERACTIVE=false
 INCLUDE_DESKTOP=false
+KID_MODE=false
+KID_LLM="free"
 
 # Detect non-interactive mode (e.g. curl | bash)
 # When stdin is not a terminal, read -p will fail with EOF,
@@ -138,6 +140,18 @@ while [[ $# -gt 0 ]]; do
             INCLUDE_DESKTOP=true
             shift
             ;;
+        --kid|-Kid)
+            # Kid mode: build the desktop app, run `hermes kid-setup` at the end
+            # (locked-down profile + free LLM), and skip the normal API-key wizard.
+            KID_MODE=true
+            INCLUDE_DESKTOP=true
+            RUN_SETUP=false
+            shift
+            ;;
+        --kid-llm|-KidLlm)
+            KID_LLM="$2"
+            shift 2
+            ;;
         --dir)
             INSTALL_DIR="$2"
             INSTALL_DIR_EXPLICIT=true
@@ -174,6 +188,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --json         Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
             echo "  --include-desktop  Also build the desktop app (apps/desktop -> Hermes.app)"
+            echo "  --kid          Kid mode: build desktop + run 'hermes kid-setup'"
+            echo "                   (locked-down profile + free LLM; skips API-key wizard)"
+            echo "  --kid-llm MODE  LLM for --kid: free | local | inherit (default: free)"
             echo "  --dir PATH     Installation directory"
             echo "                   default (non-root):  ~/.hermes/hermes-agent"
             echo "                   default (root, Linux): /usr/local/lib/hermes-agent"
@@ -1989,6 +2006,29 @@ run_setup_wizard() {
     fi
 }
 
+run_kid_setup() {
+    # Kid mode: seed the locked-down kid profile + free LLM and make it active,
+    # so the desktop opens straight into kid mode. Non-fatal on failure — the
+    # parent can re-run `hermes kid-setup` manually.
+    if [ "$KID_MODE" != true ]; then
+        return 0
+    fi
+
+    echo ""
+    log_info "Setting up kid mode (locked-down profile + LLM: $KID_LLM)..."
+    cd "$INSTALL_DIR"
+
+    if [ "$USE_VENV" = true ]; then
+        "$INSTALL_DIR/venv/bin/python" -m hermes_cli.main kid-setup --llm "$KID_LLM" \
+            || log_warn "kid-setup did not finish — run 'hermes kid-setup' manually."
+    else
+        python -m hermes_cli.main kid-setup --llm "$KID_LLM" \
+            || log_warn "kid-setup did not finish — run 'hermes kid-setup' manually."
+    fi
+
+    log_success "Kid mode ready. Launch with: hermes desktop"
+}
+
 maybe_start_gateway() {
     # Check if any messaging platform tokens were configured
     ENV_FILE="$HERMES_HOME/.env"
@@ -2726,6 +2766,8 @@ main() {
     if [ "$INCLUDE_DESKTOP" = true ]; then
         install_desktop
     fi
+
+    run_kid_setup
 
     print_success
 
