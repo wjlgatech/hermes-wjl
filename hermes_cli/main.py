@@ -266,6 +266,7 @@ from hermes_cli.subcommands._shared import add_accept_hooks_flag as _add_accept_
 from hermes_cli.subcommands.cron import build_cron_parser
 from hermes_cli.subcommands.gateway import build_gateway_parser
 from hermes_cli.subcommands.profile import build_profile_parser
+from hermes_cli.subcommands.kid_setup import build_kid_setup_parser, cmd_kid_setup
 from hermes_cli.subcommands.model import build_model_parser
 from hermes_cli.subcommands.setup import build_setup_parser
 from hermes_cli.subcommands.postinstall import build_postinstall_parser
@@ -12311,6 +12312,11 @@ def main():
     # gui command  (parser built in hermes_cli/subcommands/gui.py)
     # =========================================================================
     build_gui_parser(subparsers, cmd_gui=cmd_gui)
+
+    # =========================================================================
+    # kid-setup command  (parser built in hermes_cli/subcommands/kid_setup.py)
+    # =========================================================================
+    build_kid_setup_parser(subparsers, cmd_kid_setup=cmd_kid_setup)
 
     # =========================================================================
     # logs command  (parser built in hermes_cli/subcommands/logs.py)
