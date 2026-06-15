@@ -2756,6 +2756,29 @@ async def get_profiles_sessions(
     }
 
 
+def _build_fts_prefix_query(q: str) -> str:
+    """Turn a user query into a safe FTS5 prefix-match expression.
+
+    Bare tokens are split on FTS-special punctuation and each sub-token gets a
+    trailing ``*`` for prefix matching. This is what keeps a hyphenated search
+    like ``compounding-anything`` working: passed through raw it would reach
+    FTS5 as ``compounding-anything*`` where ``-`` is the NOT/column operator
+    (FTS5 raises ``no such column: anything`` and the whole request 500s — the
+    GUI swallows the error and shows nothing). Splitting yields
+    ``compounding* anything*`` — an AND of prefix terms — which matches as the
+    user expects. Explicit quoted phrases (``"…"``) and tokens that already end
+    in ``*`` are preserved verbatim. Returns ``""`` when the query has no
+    word characters (e.g. pure punctuation).
+    """
+    terms: list[str] = []
+    for token in re.findall(r'"[^"]*"|\S+', q.strip()):
+        if token.startswith('"') or token.endswith("*"):
+            terms.append(token)
+        else:
+            terms.extend(f"{sub}*" for sub in re.findall(r"\w+", token))
+    return " ".join(terms)
+
+
 @app.get("/api/sessions/search")
 async def search_sessions(q: str = "", limit: int = 20, profile: Optional[str] = None):
     """Search sessions by ID plus full-text message content using FTS5.
@@ -2884,18 +2907,13 @@ async def search_sessions(q: str = "", limit: int = 20, profile: Optional[str] =
             # Auto-add prefix wildcards so partial words match
             # e.g. "nimb" → "nimb*" matches "nimby"
             # Preserve quoted phrases and existing wildcards as-is
-            import re
-            terms = []
-            for token in re.findall(r'"[^"]*"|\S+', q.strip()):
-                if token.startswith('"') or token.endswith("*"):
-                    terms.append(token)
-                else:
-                    terms.append(token + "*")
-            prefix_query = " ".join(terms)
+            prefix_query = _build_fts_prefix_query(q)
             # Over-fetch so lineage dedup can still surface `limit` distinct
             # conversations even when several hits collapse onto one root.
             fetch_limit = max(safe_limit * 5, 50)
-            matches = db.search_messages(query=prefix_query, limit=fetch_limit)
+            # prefix_query is empty only when the query was pure punctuation;
+            # skip the FTS call then (id matches above still stand).
+            matches = db.search_messages(query=prefix_query, limit=fetch_limit) if prefix_query else []
 
             for m in matches:
                 if len(seen) >= safe_limit:
