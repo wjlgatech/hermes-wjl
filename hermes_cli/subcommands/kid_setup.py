@@ -1,19 +1,25 @@
 """U6 — ``hermes kid-setup``.
 
-One command that makes a child's machine ready: it seeds a locked-down "kid"
-profile from ``templates/kid-profile/`` (restricted toolset + child persona),
-configures a free LLM via the ``/free-llm-kid`` logic (free-tier cloud, local
-Ollama fallback, or inherit the parent's credential), and marks the profile
-active so the desktop launches straight into kid mode with no onboarding wall.
+One command that makes a child's machine ready: it seeds a "kid" **builder**
+profile from ``templates/kid-profile/`` (full builder toolset + a content-
+boundary persona — the guardrail is content, not capability), configures a free
+LLM via the ``/free-llm-kid`` logic (free-tier cloud, local Ollama fallback, or
+inherit the parent's credential), and marks the profile active — for BOTH the
+CLI (``~/.hermes/active_profile``) and the desktop GUI (its own
+``active-profile.json``) — so Hermes launches straight into kid mode with no
+onboarding wall.
 
-Re-running repairs the lockdown (the template is re-applied), so it's safe and
-idempotent.
+Re-running re-applies the template (repairing any drift/tampering), so it's safe
+and idempotent.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
@@ -24,6 +30,49 @@ from hermes_cli.kid_llm import build_kid_model_config
 
 # templates/kid-profile/ at the repo root (this file is hermes_cli/subcommands/).
 KID_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "templates" / "kid-profile"
+
+# The desktop (Electron) app records which profile to launch in its OWN file,
+# separate from the CLI's ~/.hermes/active_profile. It lives under Electron's
+# userData dir, named after the app's productName ("Hermes" — see
+# apps/desktop/package.json). startHermes() reads it (readActiveDesktopProfile)
+# and launches `hermes --profile <name> dashboard`. If kid-setup only set the
+# CLI active_profile, the GUI would still open the default profile — so we write
+# this file too, mirroring scripts/empower-with-hermes-wjl.sh.
+DESKTOP_APP_NAME = "Hermes"
+
+
+def desktop_userdata_dir() -> Path:
+    """Electron ``app.getPath('userData')`` for the Hermes desktop app.
+
+    Replicates Electron's per-platform appData location + productName subdir so
+    the Python CLI can point the GUI at the kid profile without the app running.
+    Honors ``HERMES_DESKTOP_USERDATA`` as an explicit override (tests, custom
+    installs).
+    """
+    override = os.environ.get("HERMES_DESKTOP_USERDATA")
+    if override:
+        return Path(override)
+
+    home = Path.home()
+    if sys.platform == "darwin":
+        base = home / "Library" / "Application Support"
+    elif sys.platform.startswith("win"):
+        base = Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
+    else:  # linux / other unix
+        base = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+    return base / DESKTOP_APP_NAME
+
+
+def desktop_active_profile_path() -> Path:
+    return desktop_userdata_dir() / "active-profile.json"
+
+
+def write_desktop_active_profile(name: str) -> Path:
+    """Point the desktop app at profile ``name`` (matches main.cjs's format)."""
+    path = desktop_active_profile_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"profile": name}, indent=2) + "\n")
+    return path
 
 
 def _template_config() -> dict:
@@ -84,14 +133,14 @@ def apply_kid_setup(
 ) -> Path:
     """Seed/repair the kid profile, set its model, and mark it active.
 
-    Returns the profile directory. The locked-down template is (re)applied every
-    run, so this both creates and repairs the profile.
+    Returns the profile directory. The template is (re)applied every run, so
+    this both creates and repairs the profile.
     """
     name = profiles.normalize_profile_name(profile)
     pdir = profiles.get_profile_dir(name)
     pdir.mkdir(parents=True, exist_ok=True)
 
-    # Authoritative lockdown from the template (repairs any drift/tampering).
+    # Authoritative config from the template (repairs any drift/tampering).
     cfg = _template_config()
 
     if mode == "inherit":
@@ -120,7 +169,9 @@ def apply_kid_setup(
         _write_env(pdir / ".env", env)
 
     # Mark active so the desktop opens straight into kid mode (no onboarding).
+    # The CLI honors ~/.hermes/active_profile; the GUI reads its own file.
     profiles.set_active_profile(name)
+    write_desktop_active_profile(name)
     return pdir
 
 
@@ -137,8 +188,8 @@ def cmd_kid_setup(args: argparse.Namespace) -> int:
     )
     name = profiles.normalize_profile_name(args.profile)
     print(f"✅ Kid profile '{name}' ready at {pdir}")
-    print("   Locked-down toolset + child persona applied; model configured "
-          f"({args.llm}).")
+    print("   Full builder toolset + content-boundary persona applied; model "
+          f"configured ({args.llm}).")
     if args.llm == "free" and not args.key:
         from hermes_cli.kid_llm import free_provider_signup
         try:
@@ -154,12 +205,13 @@ def build_kid_setup_parser(subparsers, *, cmd_kid_setup: Callable) -> None:
     """Attach the ``kid-setup`` subcommand to ``subparsers``."""
     parser = subparsers.add_parser(
         "kid-setup",
-        help="Set up a locked-down, free-LLM kid profile and make it active",
+        help="Set up a free-LLM kid builder profile and make it active",
         description=(
-            "Create/repair a child's locked-down profile (restricted toolset + "
-            "child persona), configure a free LLM (free-tier cloud with local "
-            "fallback, or inherit a parent's credential), and mark it active so "
-            "the desktop opens straight into kid mode."
+            "Create/repair a child's builder profile (full toolset + a content-"
+            "boundary persona), configure a free LLM (free-tier cloud with local "
+            "fallback, or inherit a parent's credential), and mark it active for "
+            "both the CLI and the desktop GUI so Hermes opens straight into kid "
+            "mode."
         ),
     )
     parser.add_argument("--profile", default="kid", help="Profile name (default: kid)")

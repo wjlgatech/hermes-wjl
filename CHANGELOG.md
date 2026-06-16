@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **`hermes kid-setup` now points the desktop GUI at the kid profile.** It
+  writes Electron's own `active-profile.json` (under the app's userData dir,
+  cross-platform) in addition to the CLI's `~/.hermes/active_profile`. Why: the
+  desktop reads a *separate* file (`readActiveDesktopProfile()` in
+  `apps/desktop/electron/main.cjs`), so setting only the CLI profile left the
+  GUI opening the default profile — previously patched by hand / by the empower
+  script. New `desktop_userdata_dir()` / `write_desktop_active_profile()` mirror
+  Electron's path logic; `HERMES_DESKTOP_USERDATA` overrides it for tests.
+
+### Fixed
+- **`tests/hermes_cli/test_kid_setup.py` regression** from the builder-mode
+  template switch — three tests still asserted the old `safe` lockdown. Updated
+  to assert the `hermes-cli` builder toolset, plus new coverage for the desktop
+  `active-profile.json` write.
+
 ### Changed
 - **Kid profile is now builder mode, not lockdown.** `templates/kid-profile/`
   now grants the full `hermes-cli` toolset (websites/games/apps/code/files/
