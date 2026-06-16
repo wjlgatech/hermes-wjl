@@ -106,10 +106,12 @@ curl -fsSL https://raw.githubusercontent.com/wjlgatech/hermes-wjl/main/scripts/e
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/wjlgatech/hermes-wjl/main/scripts/empower-with-hermes-wjl.ps1))) -Key <YOUR_FREE_NVIDIA_KEY>
 ```
 
-Windows prerequisites: the Hermes desktop app already installed, plus
-[Git for Windows](https://git-scm.com/download/win) on `PATH`. (The same `.sh`
-one-liner also works inside Git Bash — it now detects Windows and uses
-`venv\Scripts\` automatically.)
+Windows prerequisite: just the Hermes desktop app already installed. **Git is
+not required** — if it's missing, the PowerShell script updates by downloading
+the fork's `main` as a ZIP and overlaying the source (built-in PowerShell only;
+no admin, no execution-policy change). If Git *is* present it's used instead.
+(The same `.sh` one-liner also works inside Git Bash — it detects Windows and
+uses `venv\Scripts\` automatically.)
 
 **Fresh install (no app yet):** the fork's installer + `hermes kid-setup`:
 

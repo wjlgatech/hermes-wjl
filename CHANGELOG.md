@@ -16,6 +16,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Bash — run it with `& ([scriptblock]::Create((irm <url>))) -Key <key>` (no
   execution-policy change). Why: the prior one-liner was macOS-only and failed
   on a child's Windows PC at the Python/launch steps.
+- **Git is no longer required on Windows.** `empower-with-hermes-wjl.ps1` now
+  falls back to downloading the fork's `main` ZIP and overlaying the source
+  (built-in `Invoke-WebRequest` + `Expand-Archive`; no Git, no admin, no
+  execution-policy change) when `git` isn't on `PATH`; it still uses git when
+  available. The install-present check is gated on the venv, not a `.git` dir.
+  Why: a child's fresh Windows PC usually has no Git, which previously hard-
+  failed the setup.
 
 ### Fixed
 - **Desktop build break (`@assistant-ui/store` → `tap/react-shim`).** A rebuild
