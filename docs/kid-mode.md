@@ -85,14 +85,28 @@ No key handy? `hermes kid-setup --llm local` needs none — install
 
 ## Installing Hermes (today vs. the goal)
 
-**Today (works now):** install the fork, then run `hermes kid-setup`:
+**Already have the Hermes desktop app? One command** re-points it at this fork
+and sets up the kid profile (no re-download, no rebuild). Get a free NVIDIA key
+at <https://build.nvidia.com> first:
 
 ```bash
-# from this fork
+curl -fsSL https://raw.githubusercontent.com/wjlgatech/hermes-wjl/main/scripts/empower-with-hermes-wjl.sh | bash -s -- --key <YOUR_FREE_NVIDIA_KEY>
+```
+
+**Fresh install (no app yet):** the fork's installer + `hermes kid-setup`:
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/wjlgatech/hermes-wjl/main/scripts/install.sh | bash
-hermes kid-setup
+hermes kid-setup --llm free --provider nvidia --key <YOUR_FREE_NVIDIA_KEY>
 hermes desktop
 ```
+
+> ⚠️ **Known issue:** a desktop **rebuild** (`hermes update` / `--force-build`,
+> and therefore a fresh-machine install that builds the app) currently fails on
+> an upstream `@assistant-ui` dependency mismatch (`store` imports a
+> `tap/react-shim` path no published `tap` exports). The **one-command re-point
+> above works** because it reuses the existing built app (`--skip-build`). Fix
+> tracked separately.
 
 **The goal — a true download-and-double-click installer for the child** — is
 tracked but **not finished**: it needs code-signing/notarization certificates
