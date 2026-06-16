@@ -92,11 +92,24 @@ No key handy? `hermes kid-setup --llm local` needs none — install
 
 **Already have the Hermes desktop app? One command** re-points it at this fork
 and sets up the kid profile (no re-download, no rebuild). Get a free NVIDIA key
-at <https://build.nvidia.com> first:
+at <https://build.nvidia.com> first.
+
+**macOS / Linux** (Terminal):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wjlgatech/hermes-wjl/main/scripts/empower-with-hermes-wjl.sh | bash -s -- --key <YOUR_FREE_NVIDIA_KEY>
 ```
+
+**Windows** (PowerShell — no Git Bash needed):
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/wjlgatech/hermes-wjl/main/scripts/empower-with-hermes-wjl.ps1))) -Key <YOUR_FREE_NVIDIA_KEY>
+```
+
+Windows prerequisites: the Hermes desktop app already installed, plus
+[Git for Windows](https://git-scm.com/download/win) on `PATH`. (The same `.sh`
+one-liner also works inside Git Bash — it now detects Windows and uses
+`venv\Scripts\` automatically.)
 
 **Fresh install (no app yet):** the fork's installer + `hermes kid-setup`:
 

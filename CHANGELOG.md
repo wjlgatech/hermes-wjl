@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Windows support for the kid one-command setup.**
+  `scripts/empower-with-hermes-wjl.sh` is now cross-platform: it detects Windows
+  (Git Bash / MSYS / Cygwin) and uses `venv/Scripts/*.exe` instead of
+  `venv/bin/*`, and it no longer hard-codes the macOS `~/Library/Application
+  Support/Hermes` path (the desktop profile is set by `kid-setup` itself, which
+  picks the right per-OS userData dir). Added a native
+  `scripts/empower-with-hermes-wjl.ps1` twin so Windows users don't need Git
+  Bash — run it with `& ([scriptblock]::Create((irm <url>))) -Key <key>` (no
+  execution-policy change). Why: the prior one-liner was macOS-only and failed
+  on a child's Windows PC at the Python/launch steps.
+
 ### Fixed
 - **Desktop build break (`@assistant-ui/store` → `tap/react-shim`).** A rebuild
   (`hermes update` / `--force-build` / fresh-machine install) failed because

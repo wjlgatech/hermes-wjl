@@ -18,6 +18,20 @@ FORK_HTTPS="https://github.com/wjlgatech/hermes-wjl.git"
 HERMES_AGENT="${HOME}/.hermes/hermes-agent"
 KEY=""; LLM="free"; MODEL="google/gemma-4-31b-it"; PROFILE="kid"
 
+# Resolve the venv layout: Windows (Git Bash / MSYS / Cygwin) puts executables in
+# venv/Scripts/*.exe; macOS/Linux use venv/bin/*. Without this the Python and
+# desktop-launch steps fail on Windows. (The desktop profile itself is set by
+# `kid-setup` — write_desktop_active_profile() picks the right per-OS userData
+# dir — so this script no longer hard-codes the macOS Application Support path.)
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*|Windows_NT)
+    PY="$HERMES_AGENT/venv/Scripts/python.exe"
+    HERMES_BIN="$HERMES_AGENT/venv/Scripts/hermes.exe" ;;
+  *)
+    PY="$HERMES_AGENT/venv/bin/python"
+    HERMES_BIN="$HERMES_AGENT/venv/bin/hermes" ;;
+esac
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --key) KEY="$2"; shift 2 ;;
@@ -45,23 +59,20 @@ echo "→ Reinstalling the Python backend (no Electron rebuild)…"
 if command -v uv >/dev/null 2>&1; then
   ( cd "$HERMES_AGENT" && uv pip install -e . --quiet )
 else
-  "$HERMES_AGENT/venv/bin/python" -m pip install -e "$HERMES_AGENT" --quiet
+  "$PY" -m pip install -e "$HERMES_AGENT" --quiet
 fi
 
 echo "→ Setting up the '$PROFILE' profile (kid mode, LLM: $LLM)…"
 KID_ARGS=(kid-setup --profile "$PROFILE" --llm "$LLM" --model "$MODEL")
 [ "$LLM" = "free" ] && [ -n "$KEY" ] && KID_ARGS+=(--provider nvidia --key "$KEY")
-"$HERMES_AGENT/venv/bin/python" -m hermes_cli.main "${KID_ARGS[@]}"
-
-# Point the DESKTOP app (separate from the CLI's active_profile) at the kid profile.
-DESK_DIR="${HOME}/Library/Application Support/Hermes"
-mkdir -p "$DESK_DIR"
-printf '{"profile":"%s"}' "$PROFILE" > "$DESK_DIR/active-profile.json"
-echo "  desktop will launch profile: $PROFILE"
+# kid-setup makes the profile active for BOTH the CLI and the desktop GUI
+# (writes the desktop's own active-profile.json, cross-platform).
+"$PY" -m hermes_cli.main "${KID_ARGS[@]}"
 
 echo "→ Launching the existing desktop app on the fork (no rebuild)…"
-"$HERMES_AGENT/venv/bin/hermes" desktop --skip-build >/dev/null 2>&1 &
+"$HERMES_BIN" desktop --skip-build >/dev/null 2>&1 &
 
 echo ""
 echo "✅ Done. Your Hermes desktop app is now powered by hermes-wjl, in '$PROFILE' mode."
-echo "   Switch back to your own profile anytime: rm \"$DESK_DIR/active-profile.json\" and relaunch."
+echo "   Switch back to your own profile anytime in the desktop profile switcher"
+echo "   (or re-run this with: --profile default)."
