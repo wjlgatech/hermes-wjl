@@ -20,7 +20,7 @@ On the child's machine, once Hermes is installed:
 
 ```bash
 hermes kid-setup            # free-tier cloud LLM, falls back to local
-hermes desktop              # opens straight into locked-down kid mode
+hermes desktop              # opens straight into kid builder mode
 ```
 
 That's it — no sign-in screen, no API keys for the child to enter.
@@ -33,14 +33,16 @@ That's it — no sign-in screen, no API keys for the child to enter.
 `templates/kid-profile/` and makes it the active profile, so the desktop app
 opens into it with **no onboarding wall**. The profile:
 
-- **Restricts tools** to a safe allowlist — only web search, web read, image
-  understanding, and image generation. No terminal, file editing, browser
-  automation, code execution, task delegation, scheduling, or messaging.
-- **Uses a child persona** (simple, warm, encouraging; declines unsafe topics;
-  never asks for personal info) — see `templates/kid-profile/SOUL.md`.
-- **Bounds conversations** to keep them short.
+- **Grants full builder tools** — the same `hermes-cli` toolset an adult gets:
+  terminal, code execution, file editing, browser automation, web, and image.
+  The child can build websites, games, and apps for real.
+- **Uses a builder persona with content boundaries** (warm, step-by-step;
+  refuses sexual/violent/occult material; keeps web search on safe mode; never
+  asks for personal info; says what it's about to do before changing important
+  files) — see `templates/kid-profile/SOUL.md`.
+- **Bounds turns** (`max_turns: 60`) to give room to actually build.
 
-Re-running `hermes kid-setup` re-applies the lockdown, so it also *repairs* a
+Re-running `hermes kid-setup` re-applies the template, so it also *repairs* a
 profile that's been tampered with.
 
 ---
