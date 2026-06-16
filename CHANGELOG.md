@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Desktop build break (`@assistant-ui/store` → `tap/react-shim`).** A rebuild
+  (`hermes update` / `--force-build` / fresh-machine install) failed because
+  `@assistant-ui/store` floated to `0.2.18`, which peer-depends on
+  `@assistant-ui/tap@^0.9.0` and imports `tap/react-shim` — but
+  `@assistant-ui/react@0.12.28` pins `tap@^0.5.10` (→ `0.5.14`), which has no
+  `react-shim` export. Pinned `@assistant-ui/store` to `0.2.13` via npm
+  `overrides` in the root `package.json` (the last `0.2.x` whose peer is
+  `tap@^0.5.14` and which imports only `tap` + `tap/react`, both present in
+  `0.5.14`). `npm run build` in `apps/desktop` now succeeds. Lockfile diff is
+  the single `store` node (4 lines). Investigated/rejected: bumping `tap` to
+  `0.9.x` (rejected — `react@0.12.28` + `core@0.1.17` both pin `tap@^0.5.x`, so
+  raising `tap` breaks them instead).
+
 ### Added
 - **`hermes kid-setup` now points the desktop GUI at the kid profile.** It
   writes Electron's own `active-profile.json` (under the app's userData dir,

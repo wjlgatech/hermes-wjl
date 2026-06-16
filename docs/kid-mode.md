@@ -106,12 +106,13 @@ hermes kid-setup --llm free --provider nvidia --key <YOUR_FREE_NVIDIA_KEY>
 hermes desktop
 ```
 
-> ⚠️ **Known issue:** a desktop **rebuild** (`hermes update` / `--force-build`,
-> and therefore a fresh-machine install that builds the app) currently fails on
-> an upstream `@assistant-ui` dependency mismatch (`store` imports a
-> `tap/react-shim` path no published `tap` exports). The **one-command re-point
-> above works** because it reuses the existing built app (`--skip-build`). Fix
-> tracked separately.
+> ℹ️ A desktop **rebuild** (`hermes update` / `--force-build`, and a
+> fresh-machine install that builds the app) previously failed on an upstream
+> `@assistant-ui` dependency mismatch (`store` floated to a version importing a
+> `tap/react-shim` path no compatible `tap` exports). **Fixed** in this fork via
+> an npm `overrides` pin (`@assistant-ui/store` → `0.2.13`, the last release
+> compatible with the `tap 0.5.x` the rest of the tree uses) — `npm run build`
+> succeeds.
 
 **The goal — a true download-and-double-click installer for the child** — is
 tracked but **not finished**: it needs code-signing/notarization certificates
