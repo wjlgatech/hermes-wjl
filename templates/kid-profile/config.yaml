@@ -1,61 +1,52 @@
 # =============================================================================
-# Kid profile — locked-down config (seed)
+# Kid profile — builder mode (seed)
 # =============================================================================
 # This file is the template `hermes kid-setup` copies into a child's profile at
-# ~/.hermes/profiles/<kid>/config.yaml. It restricts the agent to a small, safe
-# set of tools and gives it a gentle, child-appropriate persona.
+# ~/.hermes/profiles/<kid>/config.yaml.
 #
-# LOCKDOWN MODEL (verified against toolsets.py / model_tools.get_tool_definitions):
-#   The AUTHORITATIVE restriction is the allowlist below — `platform_toolsets`
-#   set to [safe]. The "safe" toolset resolves to exactly four tools:
-#     web_search, web_extract, vision_analyze, image_generate
-#   No terminal, no file write/patch, no browser automation, no code execution,
-#   no delegation, no cron, no messaging. `agent.disabled_toolsets` is added as
-#   belt-and-suspenders; the allowlist is what guarantees the restriction.
+# CAPABILITY MODEL: the child gets FULL builder powers — websites, games, apps,
+# code execution, files, terminal, browser — the same tools an adult has. The
+# guardrail is CONTENT, not capability: the persona (SOUL.md + agent.personalities)
+# refuses age-inappropriate material (sexual, graphically violent, occult/cult)
+# and keeps web search on safe mode.
 #
-# SAFETY NOTE: this reduces risk but does not guarantee age-appropriate model
-# output. Adult supervision is still expected. See docs/kid-mode.md.
+# SAFETY NOTE: the content guardrail is the model's instructions (cooperative),
+# NOT a hard technical wall. With full web/terminal/file access this is best-
+# effort. Pair it with OS/network controls (macOS Screen Time -> Web Content ->
+# Limit Adult Websites; a family DNS filter) and adult supervision. See
+# docs/kid-mode.md.
 
 # -----------------------------------------------------------------------------
-# Tool lockdown — allowlist every platform to the "safe" toolset.
-# The desktop GUI agent uses the `cli` platform key (see web_server.py:
-# "Persists to platform_toolsets.cli"). The other platforms are pinned too so
-# the lockdown holds if the child ever reaches the agent another way.
+# Tools — full toolset on every platform (the desktop GUI uses the `cli` key).
 # -----------------------------------------------------------------------------
 platform_toolsets:
-  cli: [safe]
-  telegram: [safe]
-  discord: [safe]
-  whatsapp: [safe]
-  slack: [safe]
-  signal: [safe]
-  homeassistant: [safe]
+  cli: [hermes-cli]
+  telegram: [hermes-telegram]
+  discord: [hermes-discord]
+  whatsapp: [hermes-whatsapp]
+  slack: [hermes-slack]
+  signal: [hermes-signal]
+  homeassistant: [hermes-homeassistant]
 
 # -----------------------------------------------------------------------------
 # Agent behavior
 # -----------------------------------------------------------------------------
 agent:
-  # Keep conversations short and bounded for a young user.
-  max_turns: 20
+  # Room to actually build things across a few turns.
+  max_turns: 60
 
-  # Defense-in-depth: even if the allowlist were widened, these toolsets stay
-  # off. (The allowlist above is the primary guarantee; these are real toolset
-  # names that would otherwise expose shell/file/browser/cron/messaging.)
-  disabled_toolsets: [terminal, file, browser, cronjob, messaging, computer_use]
-
-  # Child-appropriate persona, activated via display.personality below.
+  # Builder persona overlay. The FIRM content boundaries live in SOUL.md.
   personalities:
     kid: >
-      You are a kind, patient, encouraging helper for a young child (around 10
-      years old). Use simple, warm, clear language. Be curious and supportive,
-      celebrate effort, and explain things step by step. Keep everything
-      age-appropriate and gentle. If a question seems unsafe, scary, or not
-      meant for kids, gently say it's a better question for a parent or grown-up.
-      Never ask for personal information like a real full name, address, school,
-      or passwords. You cannot run commands, change files, or browse the web for
-      them — if asked, kindly explain that a grown-up can help with that.
+      You are a warm, encouraging coding-and-building helper for a curious child
+      (around 10). Help them build websites, games, and apps, write and run code,
+      and modify this computer like a grown-up — explain simply, step by step, and
+      say what you're about to do before changing important files or settings.
+      Keep ALL content family-friendly: never sexual, graphically violent, or
+      occult/cult material, consistent with the family's Christian values; keep
+      web search on safe mode. Gently redirect if a request drifts there.
 
-# Activate the child persona for this profile.
+# Activate the builder/child persona for this profile.
 display:
   personality: kid
 

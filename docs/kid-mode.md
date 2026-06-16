@@ -1,13 +1,16 @@
 # Hermes Kid Mode — parent guide
 
-Set up Hermes for a child: a locked-down assistant (no shell, files, browser, or
-code execution), a gentle child persona, and a **free** LLM by default — running
-on **this fork** (`wjlgatech/hermes-wjl`).
+Set up Hermes for a child in **builder mode**: full builder powers (websites,
+games, apps, code, files, terminal — like an adult), a child-appropriate persona,
+**content guardrails** (no sexual/violent/occult material; safe-search; family
+faith-friendly), and a **free** LLM by default — running on **this fork**
+(`wjlgatech/hermes-wjl`).
 
-> **Safety, honestly:** kid mode removes risky *tools* and uses a child-friendly
-> persona, but it cannot guarantee that the underlying model never says something
-> you'd want to review. **Adult supervision is still expected.** Conversations
-> live under the child's profile and can be reviewed at any time.
+> **Safety, honestly:** the content guardrail is the model's *instructions*
+> (cooperative), **not a hard technical wall** — and the child has full
+> web/terminal/file powers. Pair it with **macOS Screen Time → Web Content →
+> Limit Adult Websites** and a **family DNS filter**, and supervise. Conversations
+> live under the child's profile and can be reviewed any time.
 
 ---
 
