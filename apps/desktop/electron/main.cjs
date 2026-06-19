@@ -4608,11 +4608,19 @@ async function ensureBackend(profile) {
 
   const entry = { process: null, port: null, token: null, connectionPromise: null, lastActiveAt: Date.now() }
   entry.connectionPromise = spawnPoolBackend(key, entry).catch(error => {
-    backendPool.delete(key)
+    // The child may have spawned before the readiness sequence (port/health/
+    // token) rejected — kill it so a failed start doesn't leak a live, listening
+    // backend on every retry.
+    const proc = entry.process
+    if (proc && proc.exitCode === null && !proc.killed) {
+      try { proc.kill('SIGKILL') } catch { /* already gone */ }
+    }
+    deletePoolEntryIfCurrent(key, entry)
     throw error
   })
   backendPool.set(key, entry)
   startPoolIdleReaper()
+  startOrphanBackendSweeper()
   return entry.connectionPromise
 }
 
@@ -4731,12 +4739,12 @@ async function spawnPoolBackend(profile, entry) {
   })
   child.once('error', error => {
     rememberLog(`Hermes backend for profile "${profile}" failed to start: ${error.message}`)
-    backendPool.delete(profile)
+    deletePoolEntryIfCurrent(profile, entry)
     rejectStart?.(error)
   })
   child.once('exit', (code, signal) => {
     rememberLog(`Hermes backend for profile "${profile}" exited (${signal || code})`)
-    backendPool.delete(profile)
+    deletePoolEntryIfCurrent(profile, entry)
     if (!ready) {
       rejectStart?.(
         new Error(`Hermes backend for profile "${profile}" exited before it became ready (${signal || code}).`)
@@ -4804,6 +4812,89 @@ function stopAllPoolBackends() {
   for (const profile of [...backendPool.keys()]) {
     stopPoolBackend(profile)
   }
+}
+
+// Remove a pool entry ONLY if it is still the current one for this profile.
+// The pool is keyed by profile, so there is exactly one slot per profile — but a
+// child's `exit`/`error` handler (or a failed spawn's `.catch`) fires
+// asynchronously and closes over the entry it was created for. By the time it
+// runs, a NEWER backend may already hold the slot (reap → immediate respawn). A
+// blind `backendPool.delete(profile)` would then evict the *new* entry, leaving
+// its live, port-holding child untracked and unreapable forever. That is the
+// root cause of the 131-leaked-backend hang. Deleting only when the slot still
+// holds OUR entry keeps every live backend tracked.
+function deletePoolEntryIfCurrent(profile, entry) {
+  if (backendPool.get(profile) === entry) {
+    backendPool.delete(profile)
+  }
+}
+
+// --- Orphan backend safety net ----------------------------------------------
+// Belt-and-suspenders for the tracking invariant above: even with identity-
+// checked deletes, any FUTURE path that drops a backend from `backendPool` /
+// `hermesProcess` without killing its child would re-introduce a leak. This
+// timer SIGTERMs dashboard children of THIS process that we no longer track and
+// that are old enough to not be mid-spawn. POSIX only; no-op on Windows.
+let orphanBackendSweeper = null
+
+function trackedBackendPids() {
+  const pids = new Set()
+  if (hermesProcess && Number.isInteger(hermesProcess.pid)) pids.add(hermesProcess.pid)
+  for (const entry of backendPool.values()) {
+    if (entry && entry.process && Number.isInteger(entry.process.pid)) pids.add(entry.process.pid)
+  }
+  return pids
+}
+
+function etimeToSeconds(text) {
+  // ps etime format: [[DD-]HH:]MM:SS
+  let days = 0
+  let rest = String(text)
+  const dash = rest.indexOf('-')
+  if (dash !== -1) {
+    days = Number(rest.slice(0, dash)) || 0
+    rest = rest.slice(dash + 1)
+  }
+  const parts = rest.split(':').map(n => Number(n) || 0)
+  let h = 0
+  let m = 0
+  let s = 0
+  if (parts.length === 3) { [h, m, s] = parts }
+  else if (parts.length === 2) { [m, s] = parts }
+  else { s = parts[0] || 0 }
+  return ((days * 24 + h) * 60 + m) * 60 + s
+}
+
+function sweepOrphanBackends() {
+  if (IS_WINDOWS) return
+  let out = ''
+  try {
+    out = execFileSync('ps', ['-axo', 'pid=,ppid=,etime=,command='], { encoding: 'utf8' })
+  } catch {
+    return
+  }
+  const tracked = trackedBackendPids()
+  const me = process.pid
+  for (const line of out.split('\n')) {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/)
+    if (!match) continue
+    const pid = Number(match[1])
+    const ppid = Number(match[2])
+    const etime = match[3]
+    const cmd = match[4]
+    if (ppid !== me) continue                                    // only our direct children
+    if (!/hermes_cli\.main\b.*\bdashboard\b/.test(cmd)) continue // only dashboard backends
+    if (tracked.has(pid)) continue                               // skip everything we track
+    if (etimeToSeconds(etime) < 120) continue                    // never a possibly-mid-spawn child
+    rememberLog(`[backend-sweep] killing untracked dashboard backend pid ${pid} (leaked orphan)`)
+    try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ }
+  }
+}
+
+function startOrphanBackendSweeper() {
+  if (orphanBackendSweeper) return
+  orphanBackendSweeper = setInterval(sweepOrphanBackends, 300_000) // every 5 min
+  if (typeof orphanBackendSweeper.unref === 'function') orphanBackendSweeper.unref()
 }
 
 function profileNameFromDeleteRequest(request) {
@@ -4938,6 +5029,7 @@ async function startHermes() {
 
     hermesProcess.stdout.on('data', rememberLog)
     hermesProcess.stderr.on('data', rememberLog)
+    startOrphanBackendSweeper()
     let backendReady = false
     let rejectBackendStart = null
     const backendStartFailed = new Promise((_resolve, reject) => {

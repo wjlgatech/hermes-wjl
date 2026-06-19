@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Desktop backend process leak that hung the app (131 orphaned `dashboard`
+  backends, ~1.5 GB).** The pool is keyed by profile (one slot each), but the
+  child `exit`/`error` handlers and the spawn `.catch` deleted the slot by key
+  with **no identity check**. A reaped child's *delayed* `exit` (reap → immediate
+  respawn) then evicted the **newer** entry from `backendPool`, leaving its live,
+  port-holding child untracked and unreapable forever — so they accumulated
+  (309 spawns − 179 reaped ≈ 130 leaked over ~4 days). Fixes:
+  `deletePoolEntryIfCurrent()` only deletes when the slot still holds *that*
+  entry; the spawn `.catch` now SIGKILLs a child that spawned before the
+  readiness sequence failed; and a periodic **orphan-backend sweeper**
+  (POSIX, every 5 min) SIGTERMs any untracked `dashboard` child of the app older
+  than 120 s as a safety net against future tracking gaps. (Trigger was benign —
+  the primary profile is `kid`, so periodic `default` requests route to the pool;
+  the leak was purely the lost-tracking race, now harmless.)
+
 ### Added
 - **Windows support for the kid one-command setup.**
   `scripts/empower-with-hermes-wjl.sh` is now cross-platform: it detects Windows
