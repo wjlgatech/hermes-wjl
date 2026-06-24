@@ -112,6 +112,13 @@ npm run test:desktop:all
 
 Boot logs land in `HERMES_HOME/logs/desktop.log` (includes backend output and recent Python tracebacks) — check it first if the app reports a boot failure.
 
+**App slows down or hangs after running for days:** older builds could leak orphaned `hermes … dashboard` backends (each holds a port and ~10 MB), eventually hanging the app. Current builds reap backends by identity and run a periodic orphan-backend sweeper, so this self-heals. If you're on an old build, quit the app and clear any stragglers:
+
+```bash
+# macOS / Linux — kill leaked dashboard backends, then relaunch
+pkill -f "hermes_cli.main .* dashboard --no-open"
+```
+
 **macOS / Linux:**
 
 ```bash
