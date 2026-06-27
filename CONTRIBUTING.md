@@ -18,6 +18,24 @@ We value contributions in this order:
 
 ---
 
+## Before You Start: Search First
+
+A quick search before you build saves your time and keeps the PR queue clean — duplicates are common here, so it's worth a minute up front.
+
+- **Search both open *and* merged PRs and issues** for your topic or error symptom — the duplicate-check in the PR template fires at review time, after you've already done the work:
+  ```bash
+  gh search issues --repo NousResearch/hermes-agent "<your terms>"
+  gh search prs --repo NousResearch/hermes-agent --state all "<your terms>"
+  ```
+  Or use the web UI: [issues](https://github.com/NousResearch/hermes-agent/issues?q=) · [PRs (all states)](https://github.com/NousResearch/hermes-agent/pulls?q=is%3Apr).
+- **The issue tracker can lag the code.** Many requested features are already implemented in-tree, so also search the source (`search_files`, or your editor's grep) for the capability before proposing it.
+- **If an open PR already addresses it**, consider reviewing or improving that one instead of opening a competing duplicate.
+- **For larger work**, comment on the issue to signal you're working on it, so others don't start the same thing.
+
+Related: #38284 covers the agent-side analog — Hermes itself checking existing issues and PRs before deep self-troubleshooting. This section is the human-contributor complement.
+
+---
+
 ## Should it be a Skill or a Tool?
 
 This is the most common question for new contributors. The answer is almost always **skill**.
@@ -412,6 +430,12 @@ Brief intro.
 ## When to Use
 Trigger conditions — when should the agent load this skill?
 
+## Prerequisites
+Env vars, install steps, MCP setup, API key sourcing.
+
+## How to Run
+Canonical invocation through the `terminal` tool.
+
 ## Quick Reference
 Table of common commands or API calls.
 
@@ -794,6 +818,31 @@ that touches the OS, assume *any* platform can hit your code path.
     helpers and never cross them. See `hermes_cli/gateway_windows.py::
     _quote_cmd_script_arg` and `_quote_schtasks_arg` for the reference
     pair.
+
+17. **Every `subprocess` call that spawns a console program needs a
+    no-window flag on Windows — and CI now enforces it.** A bare
+    `subprocess.run(["git", ...])` / `Popen(...)` of a console app flashes a
+    cmd window on Windows unless the child either inherits the parent's stdio
+    (output is captured/redirected) or is spawned with a no-window
+    creationflag. This was the single biggest source of "terminal popups"
+    bug reports. Use the helpers in `hermes_cli/_subprocess_compat.py` (both
+    no-op on POSIX):
+    ```python
+    from hermes_cli._subprocess_compat import (
+        windows_hide_flags, windows_detach_popen_kwargs,
+    )
+    # short-lived / captured spawn:
+    subprocess.run(cmd, creationflags=windows_hide_flags())
+    # detached background daemon:
+    subprocess.Popen(cmd, **windows_detach_popen_kwargs())
+    ```
+    `scripts/check-windows-footguns.py` flags any subprocess call that can
+    create a new console (AST-based, output-redirection-aware). Calls that
+    capture/redirect output, use `check_output`, or run a POSIX-only program
+    (`launchctl`, `systemctl`, `brew`, …) are exempt automatically — no
+    annotation needed. If a visible window is genuinely intended (interactive
+    editor/terminal launch, foreground re-exec), add `# windows-footgun: ok`
+    on the call line.
 
 ### Testing cross-platform
 
