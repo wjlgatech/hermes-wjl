@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **Upstream auto-sync silently froze `main` 1444 commits / 12 days behind.**
+  The hourly `sync-upstream.yml` hit a merge conflict every run, ran
+  `git merge --abort`, and still **exited 0** (green ✅), while its only alert —
+  "open an issue" — no-oped because issues are disabled on this fork. Hardened:
+  on conflict the workflow now commits the conflicted merge to a stable
+  `auto-sync/upstream` branch, opens/refreshes **one PR** into `main`, and
+  **fails the job** (red ✗) so the stall is visible. Clean merges still push
+  straight to `main`. (One-time catch-up to upstream done separately in #8.)
 - **Desktop backend process leak that hung the app (131 orphaned `dashboard`
   backends, ~1.5 GB).** The pool is keyed by profile (one slot each), but the
   child `exit`/`error` handlers and the spawn `.catch` deleted the slot by key
