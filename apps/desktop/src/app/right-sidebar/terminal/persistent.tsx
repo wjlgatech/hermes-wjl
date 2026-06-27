@@ -144,9 +144,9 @@ export function PersistentTerminal({ cwd, onAddSelectionToChat, sessionId }: Per
     contain: 'layout size paint'
   }
 
-  // Defer mount until real dims — booting xterm at 0×0 starts the shell at
-  // 80×24, then the first ResizeObserver SIGWINCH redraws the prompt on a
-  // new line. After first measurement we keep it mounted forever.
+  // Defer mount until the terminal sidebar is open and the slot has real dims.
+  // Booting xterm/node-pty at 0×0 starts the shell at 80×24 and spawns a
+  // visible conhost on Windows even when the pane is collapsed.
   return (
     <div aria-hidden={!visible} style={style}>
       {ready && (

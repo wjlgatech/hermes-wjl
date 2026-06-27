@@ -40,7 +40,9 @@ function canonicalGitHubRemote(url) {
 }
 
 function isSshRemote(url) {
-  const value = String(url || '').trim().toLowerCase()
+  const value = String(url || '')
+    .trim()
+    .toLowerCase()
   return value.startsWith('git@') || value.startsWith('ssh://')
 }
 
